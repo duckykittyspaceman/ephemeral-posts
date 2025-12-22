@@ -1,0 +1,80 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ephemeral Posts</title>
+  </head>
+  <body>
+    <h1>Ephemeral Posts (expires in 1 hour)</h1>
+
+    <textarea id="content" maxlength="500" rows="5" cols="50"
+      placeholder="Write something (max 500 chars)"></textarea><br />
+    <button id="btn">Post</button>
+
+    <p>
+      Posts are anonymous and automatically deleted 1 hour after creation.
+      Save the delete token if you want to remove it sooner.
+    </p>
+
+    <h2>Recent Posts</h2>
+    <div id="posts"></div>
+
+    <script>
+      function timeRemaining(expiresAt) {
+        const ms = expiresAt - Date.now();
+        if (ms <= 0) return "expired";
+        const mins = Math.floor(ms / 60000);
+        const secs = Math.floor((ms % 60000) / 1000);
+        return `${mins}m ${secs}s`;
+      }
+
+      async function loadPosts() {
+        const res = await fetch("/posts");
+        const posts = await res.json();
+
+        document.getElementById("posts").innerHTML =
+          posts.map(p => {
+            const expiresAt = p.expires_at; // returned by API
+            return `
+              <div style="border:1px solid #ccc; padding:10px; margin:10px 0;">
+                <div>${p.content}</div>
+                <small>Time remaining: ${timeRemaining(expiresAt)}</small>
+              </div>
+            `;
+          }).join("");
+      }
+
+      async function submitPost() {
+        const contentEl = document.getElementById("content");
+        const content = contentEl.value.trim();
+        if (!content) return;
+
+        const res = await fetch("/posts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content })
+        });
+
+        const data = await res.json();
+        if (data.error) {
+          alert(data.error);
+          return;
+        }
+
+        alert(
+          "Post created. It expires in 1 hour.\n\n" +
+          "Delete token (save this):\n" + data.deleteToken
+        );
+
+        contentEl.value = "";
+        loadPosts();
+      }
+
+      document.getElementById("btn").addEventListener("click", submitPost);
+
+      loadPosts();
+      setInterval(loadPosts, 5000);
+    </script>
+  </body>
+</html>
