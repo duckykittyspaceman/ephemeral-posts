@@ -1,104 +1,115 @@
 const express = require("express");
-const sqlite3 = require("sqlite3").verbose();
+const path = require("path");
 const { nanoid } = require("nanoid");
 
+const { Low } = require("lowdb");
+const { JSONFile } = require("lowdb/node");
+
 const app = express();
-const db = new sqlite3.Database("./posts.db");
 
 app.use(express.json());
 app.use(express.static("public"));
 
+app.get("/health", (req, res) => res.status(200).send("ok"));
+
 const ONE_HOUR = 60 * 60 * 1000;
 
-/* Database */
-db.run(`
-  CREATE TABLE IF NOT EXISTS posts (
-    id TEXT PRIMARY KEY,
-    content TEXT NOT NULL,
-    delete_token TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    expires_at INTEGER NOT NULL
-  )
-`);
+// Store database in a JSON file
+const dbFile = path.join(__dirname, "db.json");
+const adapter = new JSONFile(dbFile);
+const db = new Low(adapter, { posts: [] });
 
-/* Create Post */
-app.post("/posts", (req, res) => {
-  const content = req.body.content;
+async function initDb() {
+  await db.read();
+  db.data ||= { posts: [] };
+  await db.write();
+}
 
+function cleanupExpired() {
+  const now = Date.now();
+  db.data.posts = db.data.posts.filter((p) => p.expires_at > now);
+}
+
+app.post("/posts", async (req, res) => {
+  const content = (req.body.content || "").trim();
   if (!content || content.length > 500) {
     return res.status(400).json({ error: "Invalid content" });
   }
 
+  await db.read();
+  db.data ||= { posts: [] };
+
   const now = Date.now();
   const post = {
     id: nanoid(8),
-    delete_token: nanoid(16),
     content,
+    delete_token: nanoid(16),
     created_at: now,
     expires_at: now + ONE_HOUR
   };
 
-  db.run(
-    `INSERT INTO posts VALUES (?, ?, ?, ?, ?)`,
-    [
-      post.id,
-      post.content,
-      post.delete_token,
-      post.created_at,
-      post.expires_at
-    ],
-    () => {
-      res.json({
-        id: post.id,
-        deleteToken: post.delete_token,
-        expiresAt: post.expires_at
-      });
-    }
-  );
+  cleanupExpired();
+  db.data.posts.unshift(post);
+  await db.write();
+
+  res.json({
+    id: post.id,
+    deleteToken: post.delete_token,
+    expiresAt: post.expires_at
+  });
 });
 
-/* Get Active Posts */
-app.get("/posts", (req, res) => {
-  db.all(
-    `SELECT id, content, created_at, expires_at
-     FROM posts
-     WHERE expires_at > ?
-     ORDER BY created_at DESC`,
-    [Date.now()],
-    (err, rows) => res.json(rows)
-  );
+app.get("/posts", async (req, res) => {
+  await db.read();
+  db.data ||= { posts: [] };
+
+  cleanupExpired();
+  await db.write();
+
+  // Return fields needed by frontend
+  const rows = db.data.posts
+    .slice()
+    .sort((a, b) => b.created_at - a.created_at)
+    .map(({ id, content, created_at, expires_at }) => ({
+      id, content, created_at, expires_at
+    }));
+
+  res.json(rows);
 });
 
-/* Delete Post (Any Time Before Expiration) */
-app.delete("/posts/:id", (req, res) => {
+app.delete("/posts/:id", async (req, res) => {
   const { id } = req.params;
-  const { token } = req.body;
+  const token = req.body.token;
 
-  db.get(
-    `SELECT delete_token, expires_at FROM posts WHERE id = ?`,
-    [id],
-    (err, row) => {
-      if (!row) return res.status(404).json({ error: "Not found" });
+  await db.read();
+  db.data ||= { posts: [] };
 
-      if (row.delete_token !== token) {
-        return res.status(403).json({ error: "Invalid token" });
-      }
+  const idx = db.data.posts.findIndex((p) => p.id === id);
+  if (idx === -1) return res.status(404).json({ error: "Not found" });
 
-      if (Date.now() > row.expires_at) {
-        return res.status(403).json({ error: "Post expired" });
-      }
+  const post = db.data.posts[idx];
+  if (post.delete_token !== token) {
+    return res.status(403).json({ error: "Invalid token" });
+  }
+  if (Date.now() > post.expires_at) {
+    return res.status(403).json({ error: "Post expired" });
+  }
 
-      db.run(`DELETE FROM posts WHERE id = ?`, [id], () => {
-        res.json({ success: true });
-      });
-    }
-  );
+  db.data.posts.splice(idx, 1);
+  await db.write();
+  res.json({ success: true });
 });
 
-/* Cleanup Expired Posts */
-setInterval(() => {
-  db.run(`DELETE FROM posts WHERE expires_at <= ?`, [Date.now()]);
+// Cleanup every minute
+setInterval(async () => {
+  await db.read();
+  db.data ||= { posts: [] };
+  cleanupExpired();
+  await db.write();
 }, 60 * 1000);
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Running on port ${PORT}`));
+const PORT = Number(process.env.PORT) || 8080;
+app.listen(PORT, "0.0.0.0", async () => {
+  await initDb();
+  console.log(`Running on port ${PORT}`);
+});
