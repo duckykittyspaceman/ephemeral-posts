@@ -2,16 +2,16 @@
   "name": "ephemeral-posts",
   "version": "1.0.0",
   "main": "server.js",
+  "type": "commonjs",
   "scripts": {
     "start": "node server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
+  "engines": {
+    "node": "20.x"
+  },
   "dependencies": {
-    "express": "^5.2.1",
-    "lowdb": "^7.0.1",
+    "express": "^4.19.2",
     "nanoid": "^5.1.6"
   }
 }
+
