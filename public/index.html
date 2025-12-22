@@ -1,80 +1,340 @@
 <!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Ephemeral Posts</title>
-  </head>
-  <body>
-    <h1>Ephemeral Posts (expires in 1 hour)</h1>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ephemeral Posts</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: rgba(255,255,255,.08);
+      --panel-2: rgba(255,255,255,.12);
+      --text: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.68);
+      --line: rgba(255,255,255,.14);
+      --accent: #6ee7ff;
+      --accent2: #a78bfa;
+      --danger: #fb7185;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius: 18px;
+      --max: 980px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      color: var(--text);
+      background:
+        radial-gradient(900px 450px at 18% 10%, rgba(110,231,255,.22), transparent 55%),
+        radial-gradient(900px 450px at 86% 18%, rgba(167,139,250,.18), transparent 55%),
+        radial-gradient(900px 450px at 35% 95%, rgba(251,113,133,.10), transparent 50%),
+        var(--bg);
+      min-height: 100vh;
+    }
+    a { color: inherit; }
+    .wrap { max-width: var(--max); margin: 0 auto; padding: 28px 18px 48px; }
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; margin-bottom: 18px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .logo {
+      width: 42px; height: 42px; border-radius: 14px;
+      background: linear-gradient(135deg, rgba(110,231,255,.95), rgba(167,139,250,.95));
+      box-shadow: var(--shadow);
+    }
+    h1 { font-size: 18px; margin: 0; letter-spacing: .2px; }
+    .tagline { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+    .pill {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.06);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
 
-    <textarea id="content" maxlength="500" rows="5" cols="50"
-      placeholder="Write something (max 500 chars)"></textarea><br />
-    <button id="btn">Post</button>
+    .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    @media (min-width: 920px) { .grid { grid-template-columns: 1.05fr .95fr; } }
 
-    <p>
-      Posts are anonymous and automatically deleted 1 hour after creation.
-      Save the delete token if you want to remove it sooner.
-    </p>
+    .card {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.06));
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .card-h {
+      padding: 16px 16px 10px;
+      border-bottom: 1px solid var(--line);
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+    }
+    .card-h .title { font-weight: 650; }
+    .card-h .sub { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.35; }
+    .card-b { padding: 14px 16px 16px; }
+    textarea {
+      width: 100%;
+      min-height: 120px;
+      resize: vertical;
+      padding: 12px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,.25);
+      color: var(--text);
+      outline: none;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    textarea:focus { border-color: rgba(110,231,255,.55); box-shadow: 0 0 0 3px rgba(110,231,255,.15); }
+    .row { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-top: 10px; flex-wrap: wrap; }
+    .meta { font-size: 12px; color: var(--muted); }
+    .btns { display: flex; gap: 10px; align-items: center; }
+    button {
+      appearance: none;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px 12px;
+      background: rgba(255,255,255,.08);
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 600;
+      transition: transform .06s ease, background .15s ease, border-color .15s ease;
+    }
+    button:hover { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.22); }
+    button:active { transform: translateY(1px); }
+    .primary {
+      border-color: rgba(110,231,255,.55);
+      background: linear-gradient(135deg, rgba(110,231,255,.28), rgba(167,139,250,.22));
+    }
+    .danger { border-color: rgba(251,113,133,.55); }
+    .hint {
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
 
-    <h2>Recent Posts</h2>
-    <div id="posts"></div>
+    .feed { display: flex; flex-direction: column; gap: 10px; }
+    .post {
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,.18);
+      border-radius: 16px;
+      padding: 12px 12px;
+    }
+    .post .text { white-space: pre-wrap; word-wrap: break-word; font-size: 14px; line-height: 1.45; }
+    .post .foot {
+      display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+      margin-top: 10px; color: var(--muted); font-size: 12px;
+    }
+    .mono { font-family: var(--mono); }
+    .smallbtn { padding: 8px 10px; font-size: 12px; border-radius: 12px; }
+    .empty {
+      padding: 16px;
+      border: 1px dashed var(--line);
+      border-radius: 16px;
+      color: var(--muted);
+      background: rgba(0,0,0,.12);
+    }
+    .toast {
+      position: fixed;
+      inset: auto 16px 16px 16px;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(10,15,30,.78);
+      backdrop-filter: blur(10px);
+      box-shadow: var(--shadow);
+      color: var(--text);
+      display: none;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .toast.show { display: flex; }
+    .toast .msg { font-size: 13px; color: var(--text); line-height: 1.35; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <h1>Ephemeral Posts</h1>
+          <div class="tagline">Anonymous thoughts that disappear after one hour.</div>
+        </div>
+      </div>
+      <div class="pill">Retention: <span class="mono">60 minutes</span></div>
+    </div>
 
-    <script>
-      function timeRemaining(expiresAt) {
-        const ms = expiresAt - Date.now();
-        if (ms <= 0) return "expired";
-        const mins = Math.floor(ms / 60000);
-        const secs = Math.floor((ms % 60000) / 1000);
-        return `${mins}m ${secs}s`;
+    <div class="grid">
+      <div class="card">
+        <div class="card-h">
+          <div>
+            <div class="title">Create a post</div>
+            <div class="sub">No accounts. Posts are auto-deleted after one hour. Save your delete token if you want to delete sooner.</div>
+          </div>
+          <div class="pill mono" id="clock"></div>
+        </div>
+        <div class="card-b">
+          <textarea id="content" maxlength="500" placeholder="Write something… (max 500 characters)"></textarea>
+          <div class="row">
+            <div class="meta" id="charCount">0 / 500</div>
+            <div class="btns">
+              <button class="smallbtn" id="refreshBtn" type="button">Refresh</button>
+              <button class="primary" id="postBtn" type="button">Post</button>
+            </div>
+          </div>
+          <div class="hint">
+            Tip: If you want to support manual deletion later, keep the token somewhere private (password manager or notes).
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">
+          <div>
+            <div class="title">Live feed</div>
+            <div class="sub">Newest first. Each card shows time remaining.</div>
+          </div>
+          <div class="pill">Auto-refresh: 5s</div>
+        </div>
+        <div class="card-b">
+          <div id="posts" class="feed"></div>
+          <div id="empty" class="empty" style="display:none;">No posts yet. Be the first to publish something that vanishes.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">
+    <div class="msg" id="toastMsg"></div>
+    <button class="smallbtn" id="toastBtn" type="button">Copy token</button>
+  </div>
+
+  <script>
+    const contentEl = document.getElementById("content");
+    const charCountEl = document.getElementById("charCount");
+    const postsEl = document.getElementById("posts");
+    const emptyEl = document.getElementById("empty");
+    const clockEl = document.getElementById("clock");
+
+    const toast = document.getElementById("toast");
+    const toastMsg = document.getElementById("toastMsg");
+    const toastBtn = document.getElementById("toastBtn");
+
+    let lastToken = "";
+
+    function fmtRemaining(expiresAt) {
+      const ms = expiresAt - Date.now();
+      if (ms <= 0) return "expired";
+      const totalSec = Math.floor(ms / 1000);
+      const min = Math.floor(totalSec / 60);
+      const sec = totalSec % 60;
+      return `${min}m ${String(sec).padStart(2,"0")}s left`;
+    }
+
+    function fmtTime(ts) {
+      const d = new Date(ts);
+      return d.toLocaleString();
+    }
+
+    function showToast(message, token) {
+      lastToken = token || "";
+      toastMsg.textContent = message;
+      toastBtn.style.display = token ? "inline-block" : "none";
+      toast.classList.add("show");
+      setTimeout(() => toast.classList.remove("show"), 12000);
+    }
+
+    toastBtn.addEventListener("click", async () => {
+      if (!lastToken) return;
+      try {
+        await navigator.clipboard.writeText(lastToken);
+        showToast("Delete token copied to clipboard.", "");
+      } catch {
+        showToast("Could not copy automatically. Select and copy manually: " + lastToken, "");
       }
+    });
 
-      async function loadPosts() {
-        const res = await fetch("/posts");
-        const posts = await res.json();
-
-        document.getElementById("posts").innerHTML =
-          posts.map(p => {
-            const expiresAt = p.expires_at; // returned by API
-            return `
-              <div style="border:1px solid #ccc; padding:10px; margin:10px 0;">
-                <div>${p.content}</div>
-                <small>Time remaining: ${timeRemaining(expiresAt)}</small>
-              </div>
-            `;
-          }).join("");
+    function renderPosts(posts) {
+      postsEl.innerHTML = "";
+      if (!posts.length) {
+        emptyEl.style.display = "block";
+        return;
       }
+      emptyEl.style.display = "none";
 
-      async function submitPost() {
-        const contentEl = document.getElementById("content");
-        const content = contentEl.value.trim();
-        if (!content) return;
-
-        const res = await fetch("/posts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content })
-        });
-
-        const data = await res.json();
-        if (data.error) {
-          alert(data.error);
-          return;
-        }
-
-        alert(
-          "Post created. It expires in 1 hour.\n\n" +
-          "Delete token (save this):\n" + data.deleteToken
-        );
-
-        contentEl.value = "";
-        loadPosts();
+      for (const p of posts) {
+        const div = document.createElement("div");
+        div.className = "post";
+        div.innerHTML = `
+          <div class="text">${escapeHtml(p.content)}</div>
+          <div class="foot">
+            <span>Created: <span class="mono">${fmtTime(p.created_at)}</span></span>
+            <span><span class="mono">${fmtRemaining(p.expires_at)}</span></span>
+          </div>
+        `;
+        postsEl.appendChild(div);
       }
+    }
 
-      document.getElementById("btn").addEventListener("click", submitPost);
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
 
-      loadPosts();
-      setInterval(loadPosts, 5000);
-    </script>
-  </body>
+    async function loadPosts() {
+      const res = await fetch("/posts", { cache: "no-store" });
+      const posts = await res.json();
+      renderPosts(posts);
+    }
+
+    async function submitPost() {
+      const content = contentEl.value.trim();
+      if (!content) {
+        showToast("Write something before posting.", "");
+        return;
+      }
+      const res = await fetch("/posts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content })
+      });
+      const data = await res.json();
+      if (data.error) {
+        showToast(data.error, "");
+        return;
+      }
+      contentEl.value = "";
+      charCountEl.textContent = "0 / 500";
+      showToast("Post created. Save your delete token (valid until expiration).", data.deleteToken);
+      await loadPosts();
+    }
+
+    document.getElementById("postBtn").addEventListener("click", submitPost);
+    document.getElementById("refreshBtn").addEventListener("click", loadPosts);
+
+    contentEl.addEventListener("input", () => {
+      charCountEl.textContent = `${contentEl.value.length} / 500`;
+    });
+
+    // clock
+    setInterval(() => {
+      clockEl.textContent = new Date().toLocaleTimeString();
+    }, 1000);
+
+    loadPosts();
+    setInterval(loadPosts, 5000);
+  </script>
+</body>
 </html>
