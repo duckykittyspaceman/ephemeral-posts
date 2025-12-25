@@ -15,7 +15,6 @@
       --muted: rgba(255,255,255,0.65);
       --accent: #8be9fd;
       --accent2: #a78bfa;
-      --danger: #fb7185;
       --radius: 18px;
       --max: 920px;
       --shadow: 0 20px 40px rgba(0,0,0,0.4);
@@ -36,33 +35,20 @@
       min-height: 100vh;
     }
 
-    .wrap {
-      max-width: var(--max);
-      margin: 0 auto;
-      padding: 40px 18px 80px;
-    }
+    .wrap { max-width: var(--max); margin: 0 auto; padding: 40px 18px 80px; }
 
-    header {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      margin-bottom: 28px;
-    }
+    header { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; }
 
     .logo {
-      width: 48px;
-      height: 48px;
-      border-radius: 14px;
+      width: 48px; height: 48px; border-radius: 14px;
       background: linear-gradient(135deg, rgba(139,233,253,0.95), rgba(167,139,250,0.95));
       box-shadow: var(--shadow);
-      display: grid;
-      place-items: center;
+      display: grid; place-items: center;
     }
 
     .logo svg { width: 28px; height: 28px; }
 
     h1 { font-size: 20px; margin: 0; letter-spacing: 0.3px; }
-
     .tagline { font-size: 13px; color: var(--muted); margin-top: 4px; }
 
     .hero {
@@ -74,10 +60,7 @@
     }
 
     .grid { display: grid; gap: 20px; }
-
-    @media (min-width: 860px) {
-      .grid { grid-template-columns: 1.1fr 0.9fr; }
-    }
+    @media (min-width: 860px) { .grid { grid-template-columns: 1.1fr 0.9fr; } }
 
     .card {
       background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.05));
@@ -129,13 +112,7 @@
     }
 
     .meta { font-size: 12px; color: var(--muted); }
-
-    .hint {
-      margin-top: 10px;
-      font-size: 12px;
-      color: var(--muted);
-      line-height: 1.4;
-    }
+    .hint { margin-top: 10px; font-size: 12px; color: var(--muted); line-height: 1.4; }
 
     button {
       border-radius: 14px;
@@ -155,8 +132,9 @@
     button:disabled { opacity: 0.55; cursor: not-allowed; }
 
     .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
-
     .smallbtn { padding: 8px 10px; font-size: 12px; border-radius: 12px; }
+
+    input[type="file"] { max-width: 100%; color: var(--muted); }
 
     .preview { margin-top: 10px; display: none; gap: 10px; align-items: center; }
     .thumb {
@@ -219,13 +197,7 @@
     .update-body { margin-top: 6px; font-size: 13px; line-height: 1.4; color: rgba(255,255,255,0.74); }
     .update-date { margin-top: 6px; font-family: var(--mono); font-size: 12px; color: rgba(255,255,255,0.60); }
 
-    footer {
-      margin-top: 60px;
-      font-size: 12px;
-      color: var(--muted);
-      text-align: center;
-      line-height: 1.4;
-    }
+    footer { margin-top: 60px; font-size: 12px; color: var(--muted); text-align: center; line-height: 1.4; }
   </style>
 </head>
 
@@ -234,8 +206,8 @@
     <header>
       <div class="logo" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none">
-          <path d="M12 2C8.5 5.2 7 7.6 7 10.2c0 2.7 2.2 4.8 5 4.8s5-2.1 5-4.8C17 7.6 15.5 5.2 12 2Z" fill="rgba(0,0,0,0.35)" />
-          <path d="M8.5 13.5c.7 2.6 2.5 4.5 3.5 6.5 1-2 2.8-3.9 3.5-6.5" stroke="rgba(0,0,0,0.35)" stroke-width="1.6" stroke-linecap="round" />
+          <path d="M12 2C8.5 5.2 7 7.6 7 10.2c0 2.7 2.2 4.8 5 4.8s5-2.1 5-4.8C17 7.6 15.5 5.2 12 2Z" fill="rgba(0,0,0,0.35)"/>
+          <path d="M8.5 13.5c.7 2.6 2.5 4.5 3.5 6.5 1-2 2.8-3.9 3.5-6.5" stroke="rgba(0,0,0,0.35)" stroke-width="1.6" stroke-linecap="round"/>
         </svg>
       </div>
       <div>
@@ -263,7 +235,7 @@
           <div class="row">
             <input id="image" type="file" accept="image/*" />
             <button class="smallbtn" id="clearImageBtn" type="button">Remove image</button>
-            <div class="meta" id="uploadStatus"></div>
+            <div class="meta" id="status"></div>
           </div>
 
           <div class="preview" id="previewWrap">
@@ -277,7 +249,7 @@
           </div>
 
           <div class="hint">
-            Images are uploaded to a third-party host and linked here. Posts disappear from the feed after one hour.
+            Images are uploaded directly to Etherboard’s server and are removed when the post expires.
           </div>
         </div>
       </div>
@@ -300,13 +272,7 @@
     </footer>
   </div>
 
-  //<script>
-    // ===========
-    // CONFIG: Cloudinary unsigned upload (recommended)
-    // ===========
-    const CLOUDINARY_CLOUD_NAME = "REPLACE_ME";
-    const CLOUDINARY_UPLOAD_PRESET = "REPLACE_ME";
-
+  <script>
     const MAX_IMAGE_MB = 3;
 
     const content = document.getElementById("content");
@@ -315,7 +281,7 @@
 
     const imageEl = document.getElementById("image");
     const clearImageBtn = document.getElementById("clearImageBtn");
-    const uploadStatus = document.getElementById("uploadStatus");
+    const statusEl = document.getElementById("status");
 
     const previewWrap = document.getElementById("previewWrap");
     const previewImg = document.getElementById("previewImg");
@@ -324,10 +290,6 @@
     const announcementsEl = document.getElementById("announcements");
     const postBtn = document.getElementById("postBtn");
     const refreshBtn = document.getElementById("refreshBtn");
-
-    const CLOUDINARY_CLOUD_NAME = "your_cloud_name";
-    const CLOUDINARY_UPLOAD_PRESET = "your_unsigned_preset";
-
 
     let selectedFile = null;
 
@@ -338,7 +300,7 @@
     imageEl.addEventListener("change", () => {
       const file = imageEl.files && imageEl.files[0] ? imageEl.files[0] : null;
       selectedFile = null;
-      uploadStatus.textContent = "";
+      statusEl.textContent = "";
 
       if (!file) {
         previewWrap.style.display = "none";
@@ -362,30 +324,11 @@
     clearImageBtn.addEventListener("click", () => {
       imageEl.value = "";
       selectedFile = null;
-      uploadStatus.textContent = "";
+      statusEl.textContent = "";
       previewWrap.style.display = "none";
       previewImg.src = "";
       previewMeta.textContent = "";
     });
-
-    async function uploadToCloudinary(file) {
-      if (CLOUDINARY_CLOUD_NAME === "REPLACE_ME" || CLOUDINARY_UPLOAD_PRESET === "REPLACE_ME") {
-        throw new Error("Image upload is not configured yet. Set Cloudinary values in index.html.");
-      }//
-
-      const form = new FormData();
-      form.append("file", file);
-      form.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-
-      const res = await fetch(
-        `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
-        { method: "POST", body: form }
-      );
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error?.message || "Upload failed");
-      return data.secure_url;
-    }
 
     async function loadAnnouncements() {
       try {
@@ -432,72 +375,60 @@
     }
 
     async function submit() {
-  const text = content.value.trim();
+      const text = content.value.trim();
+      if (!text && !selectedFile) return;
 
-  // Confirm the click is actually firing
-  console.log("Submit clicked. Text length:", text.length);
+      postBtn.disabled = true;
+      refreshBtn.disabled = true;
+      statusEl.textContent = "";
 
-  if (!text) {
-    alert("Type something first.");
-    return;
-  }
+      try {
+        // Send multipart/form-data to the server: fields "content" and optional file "image"
+        const form = new FormData();
+        form.append("content", text);
+        if (selectedFile) form.append("image", selectedFile);
 
-  try {
-    const res = await fetch("/posts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: text })
-    });
+        statusEl.textContent = selectedFile ? "Uploading…" : "Posting…";
 
-    const raw = await res.text(); // read as text no matter what
-    console.log("POST /posts status:", res.status, "raw:", raw);
+        const res = await fetch("/posts", {
+          method: "POST",
+          body: form
+          // Do NOT set Content-Type; browser sets the multipart boundary automatically.
+        });
 
-    if (!res.ok) {
-      alert(`POST /posts failed (${res.status}). Response:\n\n${raw}`);
-      return;
-    }
+        const raw = await res.text();
+        let data = {};
+        try { data = JSON.parse(raw); } catch {}
 
-    // If it is JSON, parse it (optional)
-    let data = {};
-    try { data = JSON.parse(raw); } catch {}
-
-    if (data.error) {
-      alert(`Server error: ${data.error}`);
-      return;
-    }
-
-    content.value = "";
-    count.textContent = "0 / 500";
-    await loadPosts();
-    alert("Posted successfully.");
-  } catch (e) {
-    console.error(e);
-    alert(`Network error: ${e.message}`);
-  }
-}
-
-        ;
-
-        const data = await res.json();
-        if (!res.ok || data.error) throw new Error(data.error || "Failed to post.");
+        if (!res.ok) {
+          alert(`POST /posts failed (${res.status}). Response:\n\n${raw}`);
+          statusEl.textContent = "";
+          return;
+        }
+        if (data.error) {
+          alert(`Error: ${data.error}`);
+          statusEl.textContent = "";
+          return;
+        }
 
         content.value = "";
         count.textContent = "0 / 500";
         clearImageBtn.click();
+        statusEl.textContent = "";
 
         await loadPosts();
-        catch (e) {
-        uploadStatus.textContent = "";
-        alert(e.message || "Something went wrong.");
+      } catch (e) {
+        alert(`Network error: ${e.message}`);
+        statusEl.textContent = "";
       } finally {
         postBtn.disabled = false;
         refreshBtn.disabled = false;
       }
-    
+    }
 
     function escapeHtml(str) {
       return String(str).replace(/[&<>"']/g, m =>
-        ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;" }[m])
+        ({ "&":"&amp;","<":"&lt;",">":"&gt;", "\"":"&quot;","'":"&#039;" }[m])
       );
     }
 
