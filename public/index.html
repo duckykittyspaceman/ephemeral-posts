@@ -432,26 +432,51 @@
     }
 
     async function submit() {
-      const text = content.value.trim();
-      if (!text && !selectedFile) return;
+  const text = content.value.trim();
 
-      postBtn.disabled = true;
-      refreshBtn.disabled = true;
+  // Confirm the click is actually firing
+  console.log("Submit clicked. Text length:", text.length);
 
-      try {
-        let imageUrl = "";
+  if (!text) {
+    alert("Type something first.");
+    return;
+  }
 
-        if (selectedFile) {
-          uploadStatus.textContent = "Uploading image…";
-          imageUrl = await uploadToCloudinary(selectedFile);
-          uploadStatus.textContent = "Upload complete.";
-        }
+  try {
+    const res = await fetch("/posts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: text })
+    });
 
-        const res = await fetch("/posts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: text, imageUrl })
-        });
+    const raw = await res.text(); // read as text no matter what
+    console.log("POST /posts status:", res.status, "raw:", raw);
+
+    if (!res.ok) {
+      alert(`POST /posts failed (${res.status}). Response:\n\n${raw}`);
+      return;
+    }
+
+    // If it is JSON, parse it (optional)
+    let data = {};
+    try { data = JSON.parse(raw); } catch {}
+
+    if (data.error) {
+      alert(`Server error: ${data.error}`);
+      return;
+    }
+
+    content.value = "";
+    count.textContent = "0 / 500";
+    await loadPosts();
+    alert("Posted successfully.");
+  } catch (e) {
+    console.error(e);
+    alert(`Network error: ${e.message}`);
+  }
+}
+
+        ;
 
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || "Failed to post.");
