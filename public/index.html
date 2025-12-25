@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Etherboard</title>
-  <meta name="description" content="Etherboard is a quiet place to share thoughts anonymously. No accounts. No judgment. No censorship." />
+  <meta name="description" content="Post it. Let go. Etherboard is an anonymous space for thoughts that disappear." />
 
   <style>
     :root {
@@ -59,40 +59,24 @@
       place-items: center;
     }
 
-    .logo svg {
-      width: 28px;
-      height: 28px;
-    }
+    .logo svg { width: 28px; height: 28px; }
 
-    h1 {
-      font-size: 20px;
-      margin: 0;
-      letter-spacing: 0.3px;
-    }
+    h1 { font-size: 20px; margin: 0; letter-spacing: 0.3px; }
 
-    .tagline {
-      font-size: 13px;
-      color: var(--muted);
-      margin-top: 4px;
-    }
+    .tagline { font-size: 13px; color: var(--muted); margin-top: 4px; }
 
     .hero {
       margin: 24px 0 36px;
       font-size: 18px;
       line-height: 1.5;
       color: var(--muted);
-      max-width: 620px;
+      max-width: 640px;
     }
 
-    .grid {
-      display: grid;
-      gap: 20px;
-    }
+    .grid { display: grid; gap: 20px; }
 
     @media (min-width: 860px) {
-      .grid {
-        grid-template-columns: 1.1fr 0.9fr;
-      }
+      .grid { grid-template-columns: 1.1fr 0.9fr; }
     }
 
     .card {
@@ -100,22 +84,21 @@
       border: 1px solid var(--border);
       border-radius: var(--radius);
       box-shadow: var(--shadow);
+      overflow: hidden;
     }
 
-    .card h2 {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 600;
-    }
+    .card h2 { margin: 0; font-size: 16px; font-weight: 600; }
 
     .card-header {
       padding: 16px 18px;
       border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
     }
 
-    .card-body {
-      padding: 16px 18px 18px;
-    }
+    .card-body { padding: 16px 18px 18px; }
 
     textarea {
       width: 100%;
@@ -145,9 +128,13 @@
       flex-wrap: wrap;
     }
 
-    .meta {
+    .meta { font-size: 12px; color: var(--muted); }
+
+    .hint {
+      margin-top: 10px;
       font-size: 12px;
       color: var(--muted);
+      line-height: 1.4;
     }
 
     button {
@@ -165,11 +152,22 @@
       border-color: rgba(139,233,253,0.6);
     }
 
-    .feed {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+
+    .smallbtn { padding: 8px 10px; font-size: 12px; border-radius: 12px; }
+
+    .preview { margin-top: 10px; display: none; gap: 10px; align-items: center; }
+    .thumb {
+      width: 74px; height: 74px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      object-fit: cover;
+      background: rgba(0,0,0,0.25);
     }
+
+    .feed { display: flex; flex-direction: column; gap: 12px; }
 
     .post {
       border: 1px solid var(--border);
@@ -178,26 +176,55 @@
       padding: 12px 14px;
     }
 
-    .post-text {
-      white-space: pre-wrap;
-      font-size: 14px;
-      line-height: 1.45;
+    .post-text { white-space: pre-wrap; font-size: 14px; line-height: 1.45; }
+
+    .post-img {
+      width: 100%;
+      margin-top: 10px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      display: block;
     }
 
     .post-footer {
       display: flex;
       justify-content: space-between;
+      gap: 10px;
       margin-top: 10px;
       font-size: 12px;
       color: var(--muted);
       font-family: var(--mono);
+      flex-wrap: wrap;
     }
+
+    .updates {
+      border-color: rgba(139,233,253,0.30);
+      background: linear-gradient(180deg, rgba(139,233,253,0.10), rgba(0,0,0,0.16));
+    }
+
+    .updates h3 {
+      margin: 0 0 10px 0;
+      font-size: 13px;
+      letter-spacing: 0.2px;
+      color: rgba(255,255,255,0.85);
+    }
+
+    .update-item {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255,255,255,0.10);
+    }
+
+    .update-title { font-weight: 650; margin: 0; font-size: 13px; color: rgba(255,255,255,0.88); }
+    .update-body { margin-top: 6px; font-size: 13px; line-height: 1.4; color: rgba(255,255,255,0.74); }
+    .update-date { margin-top: 6px; font-family: var(--mono); font-size: 12px; color: rgba(255,255,255,0.60); }
 
     footer {
       margin-top: 60px;
       font-size: 12px;
       color: var(--muted);
       text-align: center;
+      line-height: 1.4;
     }
   </style>
 </head>
@@ -206,18 +233,9 @@
   <div class="wrap">
     <header>
       <div class="logo" aria-hidden="true">
-        <!-- Etherboard Logo (SVG) -->
         <svg viewBox="0 0 24 24" fill="none">
-          <path
-            d="M12 2C8.5 5.2 7 7.6 7 10.2c0 2.7 2.2 4.8 5 4.8s5-2.1 5-4.8C17 7.6 15.5 5.2 12 2Z"
-            fill="rgba(0,0,0,0.35)"
-          />
-          <path
-            d="M8.5 13.5c.7 2.6 2.5 4.5 3.5 6.5 1-2 2.8-3.9 3.5-6.5"
-            stroke="rgba(0,0,0,0.35)"
-            stroke-width="1.6"
-            stroke-linecap="round"
-          />
+          <path d="M12 2C8.5 5.2 7 7.6 7 10.2c0 2.7 2.2 4.8 5 4.8s5-2.1 5-4.8C17 7.6 15.5 5.2 12 2Z" fill="rgba(0,0,0,0.35)" />
+          <path d="M8.5 13.5c.7 2.6 2.5 4.5 3.5 6.5 1-2 2.8-3.9 3.5-6.5" stroke="rgba(0,0,0,0.35)" stroke-width="1.6" stroke-linecap="round" />
         </svg>
       </div>
       <div>
@@ -227,29 +245,51 @@
     </header>
 
     <div class="hero">
-      Write freely. No accounts. No history. No judgment.  
+      Write freely. No accounts. No history. No judgment.
       Everything posted here fades away after one hour.
     </div>
 
     <div class="grid">
+      <!-- Composer -->
       <div class="card">
         <div class="card-header">
           <h2>Post a thought</h2>
+          <div class="meta">Images optional</div>
         </div>
+
         <div class="card-body">
           <textarea id="content" maxlength="500" placeholder="Say what you need to say…"></textarea>
+
+          <div class="row">
+            <input id="image" type="file" accept="image/*" />
+            <button class="smallbtn" id="clearImageBtn" type="button">Remove image</button>
+            <div class="meta" id="uploadStatus"></div>
+          </div>
+
+          <div class="preview" id="previewWrap">
+            <img class="thumb" id="previewImg" alt="Selected image preview" />
+            <div class="meta" id="previewMeta"></div>
+          </div>
+
           <div class="controls">
             <div class="meta" id="count">0 / 500</div>
-            <button class="primary" id="postBtn">Post</button>
+            <button class="primary" id="postBtn" type="button">Post</button>
+          </div>
+
+          <div class="hint">
+            Images are uploaded to a third-party host and linked here. Posts disappear from the feed after one hour.
           </div>
         </div>
       </div>
 
+      <!-- Updates + Feed -->
       <div class="card">
         <div class="card-header">
           <h2>Live feed</h2>
+          <button class="smallbtn" id="refreshBtn" type="button">Refresh</button>
         </div>
         <div class="card-body">
+          <div id="announcements"></div>
           <div id="posts" class="feed"></div>
         </div>
       </div>
@@ -261,20 +301,128 @@
   </div>
 
   <script>
+    // ===========
+    // CONFIG: Cloudinary unsigned upload (recommended)
+    // ===========
+    const CLOUDINARY_CLOUD_NAME = "REPLACE_ME";
+    const CLOUDINARY_UPLOAD_PRESET = "REPLACE_ME";
+
+    const MAX_IMAGE_MB = 3;
+
     const content = document.getElementById("content");
     const count = document.getElementById("count");
     const postsEl = document.getElementById("posts");
+
+    const imageEl = document.getElementById("image");
+    const clearImageBtn = document.getElementById("clearImageBtn");
+    const uploadStatus = document.getElementById("uploadStatus");
+
+    const previewWrap = document.getElementById("previewWrap");
+    const previewImg = document.getElementById("previewImg");
+    const previewMeta = document.getElementById("previewMeta");
+
+    const announcementsEl = document.getElementById("announcements");
+    const postBtn = document.getElementById("postBtn");
+    const refreshBtn = document.getElementById("refreshBtn");
+
+    const CLOUDINARY_CLOUD_NAME = "your_cloud_name";
+    const CLOUDINARY_UPLOAD_PRESET = "your_unsigned_preset";
+
+
+    let selectedFile = null;
 
     content.addEventListener("input", () => {
       count.textContent = `${content.value.length} / 500`;
     });
 
+    imageEl.addEventListener("change", () => {
+      const file = imageEl.files && imageEl.files[0] ? imageEl.files[0] : null;
+      selectedFile = null;
+      uploadStatus.textContent = "";
+
+      if (!file) {
+        previewWrap.style.display = "none";
+        return;
+      }
+
+      const mb = file.size / (1024 * 1024);
+      if (mb > MAX_IMAGE_MB) {
+        imageEl.value = "";
+        previewWrap.style.display = "none";
+        alert(`Max image size is ${MAX_IMAGE_MB}MB.`);
+        return;
+      }
+
+      selectedFile = file;
+      previewImg.src = URL.createObjectURL(file);
+      previewMeta.textContent = `${file.type || "image"} • ${mb.toFixed(2)} MB`;
+      previewWrap.style.display = "flex";
+    });
+
+    clearImageBtn.addEventListener("click", () => {
+      imageEl.value = "";
+      selectedFile = null;
+      uploadStatus.textContent = "";
+      previewWrap.style.display = "none";
+      previewImg.src = "";
+      previewMeta.textContent = "";
+    });
+
+    async function uploadToCloudinary(file) {
+      if (CLOUDINARY_CLOUD_NAME === "REPLACE_ME" || CLOUDINARY_UPLOAD_PRESET === "REPLACE_ME") {
+        throw new Error("Image upload is not configured yet. Set Cloudinary values in index.html.");
+      }
+
+      const form = new FormData();
+      form.append("file", file);
+      form.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+
+      const res = await fetch(
+        `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+        { method: "POST", body: form }
+      );
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message || "Upload failed");
+      return data.secure_url;
+    }
+
+    async function loadAnnouncements() {
+      try {
+        const res = await fetch("/announcements", { cache: "no-store" });
+        const data = await res.json();
+        const pinned = (data.items || []).filter(x => x && x.pinned);
+
+        if (!pinned.length) {
+          announcementsEl.innerHTML = "";
+          return;
+        }
+
+        announcementsEl.innerHTML = `
+          <div class="post updates">
+            <h3>Updates</h3>
+            ${pinned.map(a => `
+              <div class="update-item">
+                <div class="update-title">${escapeHtml(a.title || "")}</div>
+                <div class="update-body">${escapeHtml(a.body || "")}</div>
+                <div class="update-date">${escapeHtml(a.date || "")}</div>
+              </div>
+            `).join("")}
+          </div>
+        `;
+      } catch {
+        announcementsEl.innerHTML = "";
+      }
+    }
+
     async function loadPosts() {
       const res = await fetch("/posts", { cache: "no-store" });
       const posts = await res.json();
+
       postsEl.innerHTML = posts.map(p => `
         <div class="post">
-          <div class="post-text">${escapeHtml(p.content)}</div>
+          ${p.content ? `<div class="post-text">${escapeHtml(p.content)}</div>` : ``}
+          ${p.image_url ? `<img class="post-img" src="${escapeAttr(p.image_url)}" alt="User uploaded image" loading="lazy" />` : ``}
           <div class="post-footer">
             <span>${new Date(p.created_at).toLocaleTimeString()}</span>
             <span>${Math.max(0, Math.floor((p.expires_at - Date.now()) / 60000))}m left</span>
@@ -285,24 +433,60 @@
 
     async function submit() {
       const text = content.value.trim();
-      if (!text) return;
-      await fetch("/posts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: text })
-      });
-      content.value = "";
-      count.textContent = "0 / 500";
-      loadPosts();
+      if (!text && !selectedFile) return;
+
+      postBtn.disabled = true;
+      refreshBtn.disabled = true;
+
+      try {
+        let imageUrl = "";
+
+        if (selectedFile) {
+          uploadStatus.textContent = "Uploading image…";
+          imageUrl = await uploadToCloudinary(selectedFile);
+          uploadStatus.textContent = "Upload complete.";
+        }
+
+        const res = await fetch("/posts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: text, imageUrl })
+        });
+
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || "Failed to post.");
+
+        content.value = "";
+        count.textContent = "0 / 500";
+        clearImageBtn.click();
+
+        await loadPosts();
+      } catch (e) {
+        uploadStatus.textContent = "";
+        alert(e.message || "Something went wrong.");
+      } finally {
+        postBtn.disabled = false;
+        refreshBtn.disabled = false;
+      }
     }
 
     function escapeHtml(str) {
-      return str.replace(/[&<>"']/g, m =>
+      return String(str).replace(/[&<>"']/g, m =>
         ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;" }[m])
       );
     }
 
+    function escapeAttr(str) {
+      return String(str).replace(/"/g, "&quot;");
+    }
+
     document.getElementById("postBtn").addEventListener("click", submit);
+    refreshBtn.addEventListener("click", async () => {
+      await loadAnnouncements();
+      await loadPosts();
+    });
+
+    loadAnnouncements();
     loadPosts();
     setInterval(loadPosts, 5000);
   </script>
