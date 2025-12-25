@@ -300,7 +300,7 @@
     </footer>
   </div>
 
-  <script>
+  //<script>
     // ===========
     // CONFIG: Cloudinary unsigned upload (recommended)
     // ===========
@@ -371,7 +371,7 @@
     async function uploadToCloudinary(file) {
       if (CLOUDINARY_CLOUD_NAME === "REPLACE_ME" || CLOUDINARY_UPLOAD_PRESET === "REPLACE_ME") {
         throw new Error("Image upload is not configured yet. Set Cloudinary values in index.html.");
-      }
+      }//
 
       const form = new FormData();
       form.append("file", file);
@@ -486,14 +486,14 @@
         clearImageBtn.click();
 
         await loadPosts();
-      } catch (e) {
+        catch (e) {
         uploadStatus.textContent = "";
         alert(e.message || "Something went wrong.");
       } finally {
         postBtn.disabled = false;
         refreshBtn.disabled = false;
       }
-    }
+    
 
     function escapeHtml(str) {
       return String(str).replace(/[&<>"']/g, m =>
