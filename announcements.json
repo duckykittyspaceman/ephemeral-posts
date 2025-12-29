@@ -6,6 +6,13 @@
       "body": "You can now attach a picture to a post. Posts still disappear after one hour.",
       "pinned": true,
       "date": "2025-12-24"
+    },
+    {
+      "id": "subreddit",
+      "title": "We have a subreddit",
+      "body": "Join us at www.reddit.com/r/EtherBoard.",
+      "pinned": true,
+      "date": "2025-12-24"
     }
   ]
 }
