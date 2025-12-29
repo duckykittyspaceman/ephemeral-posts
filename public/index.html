@@ -4,19 +4,18 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Etherboard</title>
-  <meta name="description" content="Post it. Let go. Etherboard is an anonymous space for thoughts that disappear." />
+  <meta name="description" content="Etherboard is a quiet place to share thoughts anonymously. No accounts. No judgment." />
 
   <style>
     :root {
       --bg: #0b0f1a;
-      --panel: rgba(255,255,255,0.06);
       --border: rgba(255,255,255,0.12);
       --text: rgba(255,255,255,0.92);
       --muted: rgba(255,255,255,0.65);
       --accent: #8be9fd;
       --accent2: #a78bfa;
       --radius: 18px;
-      --max: 920px;
+      --max: 980px;
       --shadow: 0 20px 40px rgba(0,0,0,0.4);
       --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       --sans: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
@@ -37,13 +36,14 @@
 
     .wrap { max-width: var(--max); margin: 0 auto; padding: 40px 18px 80px; }
 
-    header { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; }
+    header { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
 
     .logo {
       width: 48px; height: 48px; border-radius: 14px;
       background: linear-gradient(135deg, rgba(139,233,253,0.95), rgba(167,139,250,0.95));
       box-shadow: var(--shadow);
       display: grid; place-items: center;
+      flex: 0 0 auto;
     }
 
     .logo svg { width: 28px; height: 28px; }
@@ -51,16 +51,36 @@
     h1 { font-size: 20px; margin: 0; letter-spacing: 0.3px; }
     .tagline { font-size: 13px; color: var(--muted); margin-top: 4px; }
 
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 12px 0 26px;
+    }
+
     .hero {
-      margin: 24px 0 36px;
-      font-size: 18px;
-      line-height: 1.5;
+      font-size: 15px;
       color: var(--muted);
-      max-width: 640px;
+      line-height: 1.5;
+      max-width: 760px;
+    }
+
+    .pill {
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.06);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.78);
+      font-family: var(--mono);
     }
 
     .grid { display: grid; gap: 20px; }
-    @media (min-width: 860px) { .grid { grid-template-columns: 1.1fr 0.9fr; } }
+    @media (min-width: 900px) {
+      .grid { grid-template-columns: 1.05fr 0.95fr; }
+    }
 
     .card {
       background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.05));
@@ -70,8 +90,6 @@
       overflow: hidden;
     }
 
-    .card h2 { margin: 0; font-size: 16px; font-weight: 600; }
-
     .card-header {
       padding: 16px 18px;
       border-bottom: 1px solid var(--border);
@@ -79,7 +97,10 @@
       align-items: center;
       justify-content: space-between;
       gap: 10px;
+      flex-wrap: wrap;
     }
+
+    .card-header h2 { margin: 0; font-size: 16px; font-weight: 650; }
 
     .card-body { padding: 16px 18px 18px; }
 
@@ -102,37 +123,30 @@
       box-shadow: 0 0 0 3px rgba(139,233,253,0.18);
     }
 
-    .controls {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 12px;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
     .meta { font-size: 12px; color: var(--muted); }
-    .hint { margin-top: 10px; font-size: 12px; color: var(--muted); line-height: 1.4; }
 
-    button {
+    select, input[type="text"], button {
       border-radius: 14px;
       border: 1px solid var(--border);
-      padding: 10px 14px;
       background: rgba(255,255,255,0.08);
       color: var(--text);
       font-weight: 600;
-      cursor: pointer;
+      padding: 10px 12px;
+      font-size: 13px;
     }
 
+    input[type="text"] {
+      font-weight: 500;
+      min-width: 240px;
+    }
+
+    button { cursor: pointer; }
     button.primary {
       background: linear-gradient(135deg, rgba(139,233,253,0.28), rgba(167,139,250,0.22));
       border-color: rgba(139,233,253,0.6);
     }
-
     button:disabled { opacity: 0.55; cursor: not-allowed; }
-
-    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
-    .smallbtn { padding: 8px 10px; font-size: 12px; border-radius: 12px; }
 
     input[type="file"] { max-width: 100%; color: var(--muted); }
 
@@ -146,16 +160,13 @@
     }
 
     .feed { display: flex; flex-direction: column; gap: 12px; }
-
     .post {
       border: 1px solid var(--border);
       background: rgba(0,0,0,0.18);
       border-radius: 14px;
       padding: 12px 14px;
     }
-
     .post-text { white-space: pre-wrap; font-size: 14px; line-height: 1.45; }
-
     .post-img {
       width: 100%;
       margin-top: 10px;
@@ -163,7 +174,6 @@
       border: 1px solid var(--border);
       display: block;
     }
-
     .post-footer {
       display: flex;
       justify-content: space-between;
@@ -178,26 +188,18 @@
     .updates {
       border-color: rgba(139,233,253,0.30);
       background: linear-gradient(180deg, rgba(139,233,253,0.10), rgba(0,0,0,0.16));
+      margin-bottom: 12px;
     }
-
-    .updates h3 {
-      margin: 0 0 10px 0;
-      font-size: 13px;
-      letter-spacing: 0.2px;
-      color: rgba(255,255,255,0.85);
-    }
-
-    .update-item {
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px solid rgba(255,255,255,0.10);
-    }
-
+    .updates h3 { margin: 0 0 10px 0; font-size: 13px; color: rgba(255,255,255,0.85); }
+    .update-item { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.10); }
     .update-title { font-weight: 650; margin: 0; font-size: 13px; color: rgba(255,255,255,0.88); }
     .update-body { margin-top: 6px; font-size: 13px; line-height: 1.4; color: rgba(255,255,255,0.74); }
     .update-date { margin-top: 6px; font-family: var(--mono); font-size: 12px; color: rgba(255,255,255,0.60); }
+    .update-body a { color: rgba(139,233,253,0.9); text-decoration: none; border-bottom: 1px solid rgba(139,233,253,0.35); }
+    .update-body a:hover { border-bottom-color: rgba(139,233,253,0.7); }
 
     footer { margin-top: 60px; font-size: 12px; color: var(--muted); text-align: center; line-height: 1.4; }
+    .danger { color: rgba(251, 113, 133, 0.95); }
   </style>
 </head>
 
@@ -216,26 +218,44 @@
       </div>
     </header>
 
-    <div class="hero">
-      Write freely. No accounts. No history. No judgment.
-      Everything posted here fades away after one hour.
+    <div class="topbar">
+      <div class="hero" id="heroText">
+        Write freely. No accounts. No history. No judgment.
+        Everything fades away—no longer than one hour.
+      </div>
+      <div class="pill" id="modePill">MODE: MAIN FEED</div>
     </div>
 
     <div class="grid">
-      <!-- Composer -->
+      <!-- Composer + Rooms -->
       <div class="card">
         <div class="card-header">
-          <h2>Post a thought</h2>
-          <div class="meta">Images optional</div>
+          <h2 id="composerTitle">Post a thought</h2>
+          <div class="meta" id="status"></div>
         </div>
 
         <div class="card-body">
           <textarea id="content" maxlength="500" placeholder="Say what you need to say…"></textarea>
 
           <div class="row">
+            <label class="meta" for="ttl">Expires in</label>
+            <select id="ttl">
+              <option value="60" selected>60 minutes (max)</option>
+              <option value="45">45 minutes</option>
+              <option value="30">30 minutes</option>
+              <option value="20">20 minutes</option>
+              <option value="15">15 minutes</option>
+              <option value="10">10 minutes</option>
+              <option value="5">5 minutes</option>
+              <option value="1">1 minute</option>
+            </select>
+
+            <span class="meta">• Images optional (≤ 3MB)</span>
+          </div>
+
+          <div class="row">
             <input id="image" type="file" accept="image/*" />
-            <button class="smallbtn" id="clearImageBtn" type="button">Remove image</button>
-            <div class="meta" id="status"></div>
+            <button id="clearImageBtn" type="button">Remove image</button>
           </div>
 
           <div class="preview" id="previewWrap">
@@ -243,13 +263,41 @@
             <div class="meta" id="previewMeta"></div>
           </div>
 
-          <div class="controls">
+          <div class="row" style="justify-content: space-between;">
             <div class="meta" id="count">0 / 500</div>
             <button class="primary" id="postBtn" type="button">Post</button>
           </div>
 
-          <div class="hint">
-            Images are uploaded directly to Etherboard’s server and are removed when the post expires.
+          <div class="row" style="margin-top: 18px;">
+            <div class="meta" style="font-weight: 650;">Rooms</div>
+          </div>
+
+          <div class="row">
+            <select id="roomLabel">
+              <option value="">Room type: Chill</option>
+              <option value="Venting">Room type: Venting</option>
+              <option value="Support">Room type: Support</option>
+              <option value="Debrief">Room type: Debrief</option>
+              <option value="Study Break">Room type: Study Break</option>
+            </select>
+            <button id="createRoomBtn" type="button">Create room</button>
+          </div>
+
+          <div class="row">
+            <input id="joinLink" type="text" placeholder="Paste a room link to join…" />
+            <button id="joinRoomBtn" type="button">Join</button>
+          </div>
+
+          <div class="row">
+            <div class="meta" id="roomHelp">
+              Rooms expire when everyone leaves (about ~1 minute after the last person closes the tab).
+            </div>
+          </div>
+
+          <div class="row" id="roomLinkRow" style="display:none;">
+            <input id="roomLinkOut" type="text" readonly />
+            <button id="copyRoomLinkBtn" type="button">Copy link</button>
+            <button id="leaveRoomBtn" type="button" class="danger">Leave room</button>
           </div>
         </div>
       </div>
@@ -257,8 +305,8 @@
       <!-- Updates + Feed -->
       <div class="card">
         <div class="card-header">
-          <h2>Live feed</h2>
-          <button class="smallbtn" id="refreshBtn" type="button">Refresh</button>
+          <h2 id="feedTitle">Live feed</h2>
+          <button id="refreshBtn" type="button">Refresh</button>
         </div>
         <div class="card-body">
           <div id="announcements"></div>
@@ -268,7 +316,7 @@
     </div>
 
     <footer>
-      Etherboard stores nothing permanently. Posts automatically disappear after one hour.
+      Etherboard stores nothing permanently. Posts/messages disappear based on the timer you choose (up to 60 minutes).
     </footer>
   </div>
 
@@ -282,21 +330,86 @@
     const imageEl = document.getElementById("image");
     const clearImageBtn = document.getElementById("clearImageBtn");
     const statusEl = document.getElementById("status");
+    const ttlEl = document.getElementById("ttl");
 
     const previewWrap = document.getElementById("previewWrap");
     const previewImg = document.getElementById("previewImg");
     const previewMeta = document.getElementById("previewMeta");
 
     const announcementsEl = document.getElementById("announcements");
+
     const postBtn = document.getElementById("postBtn");
     const refreshBtn = document.getElementById("refreshBtn");
 
+    const modePill = document.getElementById("modePill");
+    const feedTitle = document.getElementById("feedTitle");
+    const composerTitle = document.getElementById("composerTitle");
+
+    const createRoomBtn = document.getElementById("createRoomBtn");
+    const joinRoomBtn = document.getElementById("joinRoomBtn");
+    const joinLinkEl = document.getElementById("joinLink");
+    const roomLabelEl = document.getElementById("roomLabel");
+
+    const roomLinkRow = document.getElementById("roomLinkRow");
+    const roomLinkOut = document.getElementById("roomLinkOut");
+    const copyRoomLinkBtn = document.getElementById("copyRoomLinkBtn");
+    const leaveRoomBtn = document.getElementById("leaveRoomBtn");
+
     let selectedFile = null;
 
+    // Room mode detection: /r/<roomId>
+    function getRoomIdFromPath() {
+      const m = window.location.pathname.match(/^\/r\/([A-Za-z0-9_-]+)$/);
+      return m ? m[1] : null;
+    }
+
+    let roomId = getRoomIdFromPath();
+    let roomPingTimer = null;
+
+    function setModeUI() {
+      if (roomId) {
+        modePill.textContent = `MODE: ROOM (${roomId})`;
+        feedTitle.textContent = "Room feed";
+        composerTitle.textContent = "Post to room";
+        roomLinkRow.style.display = "flex";
+        roomLinkOut.value = `${window.location.origin}/r/${roomId}`;
+      } else {
+        modePill.textContent = "MODE: MAIN FEED";
+        feedTitle.textContent = "Live feed";
+        composerTitle.textContent = "Post a thought";
+        roomLinkRow.style.display = "none";
+      }
+    }
+
+    function startRoomHeartbeat() {
+      if (!roomId) return;
+      stopRoomHeartbeat();
+
+      const ping = async () => {
+        try {
+          await fetch(`/rooms/${encodeURIComponent(roomId)}/ping`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}"
+          });
+        } catch {}
+      };
+
+      ping();
+      roomPingTimer = setInterval(ping, 20000); // every 20s
+    }
+
+    function stopRoomHeartbeat() {
+      if (roomPingTimer) clearInterval(roomPingTimer);
+      roomPingTimer = null;
+    }
+
+    // Live character count
     content.addEventListener("input", () => {
       count.textContent = `${content.value.length} / 500`;
     });
 
+    // Image selection + preview
     imageEl.addEventListener("change", () => {
       const file = imageEl.files && imageEl.files[0] ? imageEl.files[0] : null;
       selectedFile = null;
@@ -347,7 +460,10 @@
             ${pinned.map(a => `
               <div class="update-item">
                 <div class="update-title">${escapeHtml(a.title || "")}</div>
-                <div class="update-body">${escapeHtml(a.body || "")}</div>
+                <div class="update-body">
+                  ${escapeHtml(a.body || "")}
+                  ${a.link ? ` <a href="${escapeAttr(a.link)}" target="_blank" rel="noopener noreferrer">Open</a>` : ``}
+                </div>
                 <div class="update-date">${escapeHtml(a.date || "")}</div>
               </div>
             `).join("")}
@@ -359,10 +475,20 @@
     }
 
     async function loadPosts() {
-      const res = await fetch("/posts", { cache: "no-store" });
+      const url = roomId ? `/posts?roomId=${encodeURIComponent(roomId)}` : `/posts`;
+      const res = await fetch(url, { cache: "no-store" });
+
+      if (res.status === 404 && roomId) {
+        // room expired/closed
+        stopRoomHeartbeat();
+        alert("This room no longer exists (everyone left). Returning to main feed.");
+        window.location.href = "/";
+        return;
+      }
+
       const posts = await res.json();
 
-      postsEl.innerHTML = posts.map(p => `
+      postsEl.innerHTML = (posts || []).map(p => `
         <div class="post">
           ${p.content ? `<div class="post-text">${escapeHtml(p.content)}</div>` : ``}
           ${p.image_url ? `<img class="post-img" src="${escapeAttr(p.image_url)}" alt="User uploaded image" loading="lazy" />` : ``}
@@ -376,6 +502,8 @@
 
     async function submit() {
       const text = content.value.trim();
+      const ttlMinutes = Number(ttlEl.value || "60");
+
       if (!text && !selectedFile) return;
 
       postBtn.disabled = true;
@@ -383,30 +511,19 @@
       statusEl.textContent = "";
 
       try {
-        // Send multipart/form-data to the server: fields "content" and optional file "image"
         const form = new FormData();
         form.append("content", text);
+        form.append("ttlMinutes", String(ttlMinutes));
+        if (roomId) form.append("roomId", roomId);
         if (selectedFile) form.append("image", selectedFile);
 
         statusEl.textContent = selectedFile ? "Uploading…" : "Posting…";
 
-        const res = await fetch("/posts", {
-          method: "POST",
-          body: form
-          // Do NOT set Content-Type; browser sets the multipart boundary automatically.
-        });
-
+        const res = await fetch("/posts", { method: "POST", body: form });
         const raw = await res.text();
-        let data = {};
-        try { data = JSON.parse(raw); } catch {}
 
         if (!res.ok) {
           alert(`POST /posts failed (${res.status}). Response:\n\n${raw}`);
-          statusEl.textContent = "";
-          return;
-        }
-        if (data.error) {
-          alert(`Error: ${data.error}`);
           statusEl.textContent = "";
           return;
         }
@@ -426,6 +543,55 @@
       }
     }
 
+    async function createRoom() {
+      createRoomBtn.disabled = true;
+      statusEl.textContent = "Creating room…";
+
+      try {
+        const label = roomLabelEl.value || "";
+        const res = await fetch("/rooms", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ label })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          alert(data.error || "Failed to create room.");
+          return;
+        }
+
+        // Redirect into room
+        window.location.href = data.joinUrl;
+      } catch (e) {
+        alert(`Network error: ${e.message}`);
+      } finally {
+        createRoomBtn.disabled = false;
+        statusEl.textContent = "";
+      }
+    }
+
+    function joinRoom() {
+      const link = (joinLinkEl.value || "").trim();
+      if (!link) return;
+
+      try {
+        const u = new URL(link);
+        if (!u.pathname.startsWith("/r/")) {
+          alert("That link does not look like a room link.");
+          return;
+        }
+        window.location.href = `${u.origin}${u.pathname}`;
+      } catch {
+        // If user pasted only /r/xxx
+        if (link.startsWith("/r/")) {
+          window.location.href = link;
+          return;
+        }
+        alert("Please paste a valid room link.");
+      }
+    }
+
     function escapeHtml(str) {
       return String(str).replace(/[&<>"']/g, m =>
         ({ "&":"&amp;","<":"&lt;",">":"&gt;", "\"":"&quot;","'":"&#039;" }[m])
@@ -436,15 +602,38 @@
       return String(str).replace(/"/g, "&quot;");
     }
 
+    // Room actions
+    copyRoomLinkBtn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(roomLinkOut.value);
+        statusEl.textContent = "Room link copied.";
+        setTimeout(() => statusEl.textContent = "", 1500);
+      } catch {
+        alert("Could not copy. Please copy manually.");
+      }
+    });
+
+    leaveRoomBtn.addEventListener("click", () => {
+      stopRoomHeartbeat();
+      window.location.href = "/";
+    });
+
+    // Buttons
     document.getElementById("postBtn").addEventListener("click", submit);
     refreshBtn.addEventListener("click", async () => {
       await loadAnnouncements();
       await loadPosts();
     });
+    createRoomBtn.addEventListener("click", createRoom);
+    joinRoomBtn.addEventListener("click", joinRoom);
 
+    // Init
+    setModeUI();
     loadAnnouncements();
     loadPosts();
     setInterval(loadPosts, 5000);
+
+    if (roomId) startRoomHeartbeat();
   </script>
 </body>
 </html>
