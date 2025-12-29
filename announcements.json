@@ -8,8 +8,6 @@
       "date": "2025-12-24"
     },
    {
-  "items": [
-    {
       "id": "feature-rooms-ttl",
       "title": "New: Custom timers + Rooms",
       "body": "You can now choose how long your post stays up (up to 60 minutes). Plus, you can create private Rooms and share a link so anyone can join—no accounts needed. Rooms disappear shortly after everyone leaves.",
