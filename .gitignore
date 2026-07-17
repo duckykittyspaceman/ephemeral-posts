@@ -1,4 +1,17 @@
+# Dependencies
 node_modules/
+
+# Secrets — never commit these
+.env
+.env.*
+!.env.example
+
+# Leftovers from the old disk-backed design.
+# The rewrite never creates these, but old clones may still have them.
 db.json
 uploads/
 
+# Logs / OS noise
+*.log
+npm-debug.log*
+.DS_Store

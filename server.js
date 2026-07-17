@@ -4,9 +4,11 @@
  * Etherboard — ephemeral anonymous board.
  *
  * DESIGN RULE: nothing a user creates ever touches the disk.
- * Posts, rooms and images live in RAM only. A crash, a redeploy or a
- * restart wipes everything, by design. There is no database, no volume,
- * no upload directory, and nothing to recover.
+ * Posts and images live in RAM only. A crash, a redeploy or a restart
+ * wipes everything, by design. There is no database, no volume, no
+ * upload directory, and nothing to recover.
+ *
+ * Single open forum. No rooms, no accounts.
  */
 
 const crypto = require("crypto");
@@ -24,28 +26,20 @@ const multer = require("multer");
 
 const PORT = Number(process.env.PORT) || 8080;
 
-// Set this in Railway to your canonical origin, e.g. https://etherboard.net
-// If unset we fall back to the request's Host header (see publicOrigin()).
-const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN || "";
-
 const ONE_SECOND = 1000;
 const ONE_MINUTE = 60 * ONE_SECOND;
 
 const MIN_TTL_MINUTES = 1;
 const MAX_TTL_MINUTES = 60;
 
-const ROOM_EMPTY_GRACE_MS = 60 * ONE_SECOND;
 const SWEEP_INTERVAL_MS = 15 * ONE_SECOND;
 
 const MAX_CONTENT_CHARS = 500;
-const MAX_LABEL_CHARS = 40;
 
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024; // 3MB per image
 const MAX_TOTAL_IMAGE_BYTES = 150 * 1024 * 1024; // 150MB of images, board-wide
 
 const MAX_POSTS_TOTAL = 2000;
-const MAX_POSTS_PER_ROOM = 200;
-const MAX_ROOMS_TOTAL = 500;
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const ANNOUNCEMENTS_PATH = path.join(__dirname, "announcements.json");
@@ -55,7 +49,6 @@ const ANNOUNCEMENTS_PATH = path.join(__dirname, "announcements.json");
  * ------------------------------------------------------------------ */
 
 /** @type {Map<string, object>} */ const posts = new Map();
-/** @type {Map<string, object>} */ const rooms = new Map();
 /** @type {Map<string, {buf: Buffer, mime: string, bytes: number}>} */
 const images = new Map();
 
@@ -69,9 +62,6 @@ const BOOT_SALT = crypto.randomBytes(32);
  * Helpers
  * ------------------------------------------------------------------ */
 
-// base64url alphabet is [A-Za-z0-9_-], which matches the room-id regex
-// the frontend uses. crypto is used instead of nanoid so there's one
-// less dependency and no CJS/ESM version trap.
 function makeId(bytes = 8) {
   return crypto.randomBytes(bytes).toString("base64url");
 }
@@ -92,11 +82,6 @@ function safeHttpUrl(value) {
   } catch {
     return null;
   }
-}
-
-function publicOrigin(req) {
-  if (PUBLIC_ORIGIN) return PUBLIC_ORIGIN.replace(/\/+$/, "");
-  return `${req.protocol}://${req.get("host")}`;
 }
 
 /**
@@ -138,21 +123,8 @@ function destroyPost(post) {
   posts.delete(post.id);
 }
 
-function destroyRoom(room) {
-  for (const post of posts.values()) {
-    if (post.roomId === room.id) destroyPost(post);
-  }
-  rooms.delete(room.id);
-}
-
-function countPostsInRoom(roomId) {
-  let n = 0;
-  for (const p of posts.values()) if (p.roomId === roomId) n++;
-  return n;
-}
-
 /**
- * Expire posts, close empty rooms, drop unreferenced images.
+ * Expire posts and drop unreferenced images.
  * Deleting from a Map while iterating it is well-defined in JS.
  */
 function sweep() {
@@ -160,10 +132,6 @@ function sweep() {
 
   for (const post of posts.values()) {
     if (post.expiresAt <= now) destroyPost(post);
-  }
-
-  for (const room of rooms.values()) {
-    if (room.lastActiveAt + ROOM_EMPTY_GRACE_MS < now) destroyRoom(room);
   }
 
   // Belt and braces: no image should outlive its post.
@@ -268,7 +236,7 @@ app.use(
   })
 );
 
-// Only ever used for the room label and the delete token.
+// Only ever used for the delete token.
 app.use(express.json({ limit: "8kb" }));
 
 /* ------------------------------------------------------------------ *
@@ -295,8 +263,6 @@ function limiter(windowMs, limit, message) {
 }
 
 const postLimiter = limiter(5 * ONE_MINUTE, 12, "Slow down — too many posts. Try again in a few minutes.");
-const roomLimiter = limiter(10 * ONE_MINUTE, 5, "Too many rooms created. Try again in a few minutes.");
-const pingLimiter = limiter(ONE_MINUTE, 40, "Too many requests.");
 const readLimiter = limiter(ONE_MINUTE, 240, "Too many requests.");
 
 /* ------------------------------------------------------------------ *
@@ -308,7 +274,7 @@ const upload = multer({
   limits: {
     fileSize: MAX_IMAGE_BYTES,
     files: 1,
-    fields: 6,
+    fields: 5,
     fieldSize: 8 * 1024,
     parts: 10
   }
@@ -324,13 +290,10 @@ app.get("/health", (req, res) => res.status(200).type("text/plain").send("ok"));
 
 app.get("/", sendIndex);
 
-// Serve the SPA for room links: /r/<roomId>
-app.get("/r/:roomId", (req, res) => {
-  if (!/^[A-Za-z0-9_-]{1,32}$/.test(req.params.roomId)) {
-    return res.status(404).type("text/plain").send("Not found");
-  }
-  sendIndex(req, res);
-});
+// Rooms are gone. Old /r/<id> links people may still have lying around
+// land on the main feed instead of a dead end. 302, not 301, so nothing
+// gets permanently cached if rooms ever come back.
+app.get("/r/:roomId", (req, res) => res.redirect(302, "/"));
 
 // The raw file has no nonce, so serving it directly would break under CSP.
 app.get("/index.html", (req, res) => res.redirect(301, "/"));
@@ -371,56 +334,15 @@ app.get("/announcements", readLimiter, (req, res) => {
 });
 
 /**
- * Create a room.
- * Body: { label?: string } -> { roomId, joinUrl }
- */
-app.post("/rooms", roomLimiter, (req, res) => {
-  const label = typeof req.body?.label === "string" ? req.body.label.trim().slice(0, MAX_LABEL_CHARS) : "";
-
-  if (rooms.size >= MAX_ROOMS_TOTAL) {
-    return res.status(503).json({ error: "Too many rooms are open right now. Try again shortly." });
-  }
-
-  const id = makeId(8);
-  const now = Date.now();
-
-  rooms.set(id, { id, label: label || null, createdAt: now, lastActiveAt: now });
-
-  res.json({ roomId: id, joinUrl: `${publicOrigin(req)}/r/${id}` });
-});
-
-/**
- * Room heartbeat. Keeps a room alive while at least one tab is open.
- */
-app.post("/rooms/:id/ping", pingLimiter, (req, res) => {
-  const room = rooms.get(req.params.id);
-  if (!room) return res.status(404).json({ error: "Room not found." });
-
-  room.lastActiveAt = Date.now();
-  res.json({ ok: true });
-});
-
-/**
- * Read the feed.
- * GET /posts            -> main feed
- * GET /posts?roomId=xyz -> room feed
- *
- * Pure read. Nothing is written, nothing is swept — that's the sweeper's
- * job on its own interval. Filter expired posts on the way out so a post
- * is never shown past its timer even between sweeps.
+ * Read the feed. Pure read — nothing is written, nothing is swept.
+ * Expired posts are filtered on the way out so a post is never shown
+ * past its timer even between sweeps.
  */
 app.get("/posts", readLimiter, (req, res) => {
-  const roomId = typeof req.query.roomId === "string" && req.query.roomId ? req.query.roomId : null;
-
-  if (roomId && !rooms.has(roomId)) {
-    return res.status(404).json({ error: "Room not found." });
-  }
-
   const now = Date.now();
   const out = [];
 
   for (const p of posts.values()) {
-    if (roomId ? p.roomId !== roomId : p.roomId !== null) continue;
     if (p.expiresAt <= now) continue;
     out.push({
       id: p.id,
@@ -439,16 +361,13 @@ app.get("/posts", readLimiter, (req, res) => {
 
 /**
  * Create a post.
- * multipart/form-data: content?, ttlMinutes?, roomId?, image?
+ * multipart/form-data: content?, ttlMinutes?, image?
  *
  * Note there is no `await` between reading state and mutating it, so Node's
- * single thread makes this handler atomic. That is the whole reason the
- * old read-modify-write race is gone.
+ * single thread makes this handler atomic.
  */
 app.post("/posts", postLimiter, upload.single("image"), (req, res) => {
   const content = typeof req.body?.content === "string" ? req.body.content.trim() : "";
-  const roomIdRaw = typeof req.body?.roomId === "string" ? req.body.roomId.trim() : "";
-  const roomId = roomIdRaw || null;
   const ttlRaw = typeof req.body?.ttlMinutes === "string" ? req.body.ttlMinutes.trim() : "";
   const ttlMinutes = ttlRaw ? Number(ttlRaw) : MAX_TTL_MINUTES;
   const file = req.file || null;
@@ -461,15 +380,6 @@ app.post("/posts", postLimiter, upload.single("image"), (req, res) => {
   }
   if (!Number.isInteger(ttlMinutes) || ttlMinutes < MIN_TTL_MINUTES || ttlMinutes > MAX_TTL_MINUTES) {
     return res.status(400).json({ error: `Timer must be between ${MIN_TTL_MINUTES} and ${MAX_TTL_MINUTES} minutes.` });
-  }
-
-  let room = null;
-  if (roomId) {
-    room = rooms.get(roomId);
-    if (!room) return res.status(404).json({ error: "Room not found." });
-    if (countPostsInRoom(roomId) >= MAX_POSTS_PER_ROOM) {
-      return res.status(503).json({ error: "This room is full. Wait for older posts to expire." });
-    }
   }
 
   if (posts.size >= MAX_POSTS_TOTAL) {
@@ -493,7 +403,6 @@ app.post("/posts", postLimiter, upload.single("image"), (req, res) => {
   const now = Date.now();
   const post = {
     id: makeId(8),
-    roomId,
     content,
     imageId,
     imageUrl: imageId ? `/i/${imageId}` : null,
@@ -503,7 +412,6 @@ app.post("/posts", postLimiter, upload.single("image"), (req, res) => {
   };
 
   posts.set(post.id, post);
-  if (room) room.lastActiveAt = now;
 
   res.json({ id: post.id, deleteToken: post.deleteToken, expiresAt: post.expiresAt });
 });

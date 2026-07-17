@@ -223,11 +223,10 @@
         Write freely. No accounts. No history. No judgment.
         Everything fades away—no longer than one hour.
       </div>
-      <div class="pill" id="modePill">MODE: MAIN FEED</div>
     </div>
 
     <div class="grid">
-      <!-- Composer + Rooms -->
+      <!-- Composer -->
       <div class="card">
         <div class="card-header">
           <h2 id="composerTitle">Post a thought</h2>
@@ -268,37 +267,6 @@
             <button class="primary" id="postBtn" type="button">Post</button>
           </div>
 
-          <div class="row" style="margin-top: 18px;">
-            <div class="meta" style="font-weight: 650;">Rooms</div>
-          </div>
-
-          <div class="row">
-            <select id="roomLabel">
-              <option value="">Room type: Chill</option>
-              <option value="Venting">Room type: Venting</option>
-              <option value="Support">Room type: Support</option>
-              <option value="Debrief">Room type: Debrief</option>
-              <option value="Study Break">Room type: Study Break</option>
-            </select>
-            <button id="createRoomBtn" type="button">Create room</button>
-          </div>
-
-          <div class="row">
-            <input id="joinLink" type="text" placeholder="Paste a room link to join…" />
-            <button id="joinRoomBtn" type="button">Join</button>
-          </div>
-
-          <div class="row">
-            <div class="meta" id="roomHelp">
-              Rooms expire when everyone leaves (about ~1 minute after the last person closes the tab).
-            </div>
-          </div>
-
-          <div class="row" id="roomLinkRow" style="display:none;">
-            <input id="roomLinkOut" type="text" readonly />
-            <button id="copyRoomLinkBtn" type="button">Copy link</button>
-            <button id="leaveRoomBtn" type="button" class="danger">Leave room</button>
-          </div>
         </div>
       </div>
 
@@ -341,68 +309,7 @@
     const postBtn = document.getElementById("postBtn");
     const refreshBtn = document.getElementById("refreshBtn");
 
-    const modePill = document.getElementById("modePill");
-    const feedTitle = document.getElementById("feedTitle");
-    const composerTitle = document.getElementById("composerTitle");
-
-    const createRoomBtn = document.getElementById("createRoomBtn");
-    const joinRoomBtn = document.getElementById("joinRoomBtn");
-    const joinLinkEl = document.getElementById("joinLink");
-    const roomLabelEl = document.getElementById("roomLabel");
-
-    const roomLinkRow = document.getElementById("roomLinkRow");
-    const roomLinkOut = document.getElementById("roomLinkOut");
-    const copyRoomLinkBtn = document.getElementById("copyRoomLinkBtn");
-    const leaveRoomBtn = document.getElementById("leaveRoomBtn");
-
     let selectedFile = null;
-
-    // Room mode detection: /r/<roomId>
-    function getRoomIdFromPath() {
-      const m = window.location.pathname.match(/^\/r\/([A-Za-z0-9_-]+)$/);
-      return m ? m[1] : null;
-    }
-
-    let roomId = getRoomIdFromPath();
-    let roomPingTimer = null;
-
-    function setModeUI() {
-      if (roomId) {
-        modePill.textContent = `MODE: ROOM (${roomId})`;
-        feedTitle.textContent = "Room feed";
-        composerTitle.textContent = "Post to room";
-        roomLinkRow.style.display = "flex";
-        roomLinkOut.value = `${window.location.origin}/r/${roomId}`;
-      } else {
-        modePill.textContent = "MODE: MAIN FEED";
-        feedTitle.textContent = "Live feed";
-        composerTitle.textContent = "Post a thought";
-        roomLinkRow.style.display = "none";
-      }
-    }
-
-    function startRoomHeartbeat() {
-      if (!roomId) return;
-      stopRoomHeartbeat();
-
-      const ping = async () => {
-        try {
-          await fetch(`/rooms/${encodeURIComponent(roomId)}/ping`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: "{}"
-          });
-        } catch {}
-      };
-
-      ping();
-      roomPingTimer = setInterval(ping, 20000); // every 20s
-    }
-
-    function stopRoomHeartbeat() {
-      if (roomPingTimer) clearInterval(roomPingTimer);
-      roomPingTimer = null;
-    }
 
     // Live character count
     content.addEventListener("input", () => {
@@ -477,17 +384,7 @@
     }
 
     async function loadPosts() {
-      const url = roomId ? `/posts?roomId=${encodeURIComponent(roomId)}` : `/posts`;
-      const res = await fetch(url, { cache: "no-store" });
-
-      if (res.status === 404 && roomId) {
-        // room expired/closed
-        stopRoomHeartbeat();
-        alert("This room no longer exists (everyone left). Returning to main feed.");
-        window.location.href = "/";
-        return;
-      }
-
+      const res = await fetch("/posts", { cache: "no-store" });
       const posts = await res.json();
 
       postsEl.innerHTML = (posts || []).map(p => `
@@ -516,7 +413,6 @@
         const form = new FormData();
         form.append("content", text);
         form.append("ttlMinutes", String(ttlMinutes));
-        if (roomId) form.append("roomId", roomId);
         if (selectedFile) form.append("image", selectedFile);
 
         statusEl.textContent = selectedFile ? "Uploading…" : "Posting…";
@@ -549,70 +445,6 @@
       }
     }
 
-    async function createRoom() {
-      createRoomBtn.disabled = true;
-      statusEl.textContent = "Creating room…";
-
-      try {
-        const label = roomLabelEl.value || "";
-        const res = await fetch("/rooms", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ label })
-        });
-        const data = await res.json();
-
-        if (!res.ok) {
-          alert(data.error || "Failed to create room.");
-          return;
-        }
-
-        // Build the URL locally rather than following whatever the response
-        // says — the old code trusted joinUrl, which is derived from the
-        // Host header.
-        if (!data.roomId || !/^[A-Za-z0-9_-]{1,32}$/.test(data.roomId)) {
-          alert("Failed to create room.");
-          return;
-        }
-        window.location.href = `/r/${data.roomId}`;
-      } catch (e) {
-        alert(`Network error: ${e.message}`);
-      } finally {
-        createRoomBtn.disabled = false;
-        statusEl.textContent = "";
-      }
-    }
-
-    function joinRoom() {
-      const link = (joinLinkEl.value || "").trim();
-      if (!link) return;
-
-      // Pull the room id out and rebuild the URL against our own origin.
-      // The old code reused the pasted link's origin, so a link like
-      // https://evil.example/r/abc would navigate the user off-site.
-      let pathname;
-      try {
-        pathname = new URL(link, window.location.origin).pathname;
-      } catch {
-        alert("Please paste a valid room link.");
-        return;
-      }
-
-      const m = pathname.match(/^\/r\/([A-Za-z0-9_-]{1,32})$/);
-      if (!m) {
-        alert("That link does not look like a room link.");
-        return;
-      }
-
-      window.location.href = `/r/${m[1]}`;
-    }
-
-    function escapeHtml(str) {
-      return String(str).replace(/[&<>"']/g, m =>
-        ({ "&":"&amp;","<":"&lt;",">":"&gt;", "\"":"&quot;","'":"&#039;" }[m])
-      );
-    }
-
     // Attribute values need the same treatment as text. The old version
     // only escaped double quotes, which left the door open.
     function escapeAttr(str) {
@@ -631,38 +463,16 @@
       }
     }
 
-    // Room actions
-    copyRoomLinkBtn.addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(roomLinkOut.value);
-        statusEl.textContent = "Room link copied.";
-        setTimeout(() => statusEl.textContent = "", 1500);
-      } catch {
-        alert("Could not copy. Please copy manually.");
-      }
-    });
-
-    leaveRoomBtn.addEventListener("click", () => {
-      stopRoomHeartbeat();
-      window.location.href = "/";
-    });
-
     // Buttons
     document.getElementById("postBtn").addEventListener("click", submit);
     refreshBtn.addEventListener("click", async () => {
       await loadAnnouncements();
       await loadPosts();
     });
-    createRoomBtn.addEventListener("click", createRoom);
-    joinRoomBtn.addEventListener("click", joinRoom);
-
     // Init
-    setModeUI();
     loadAnnouncements();
     loadPosts();
     setInterval(loadPosts, 5000);
-
-    if (roomId) startRoomHeartbeat();
   </script>
 </body>
 </html>
