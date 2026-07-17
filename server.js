@@ -1,449 +1,559 @@
-const express = require("express");
+"use strict";
+
+/**
+ * Etherboard — ephemeral anonymous board.
+ *
+ * DESIGN RULE: nothing a user creates ever touches the disk.
+ * Posts, rooms and images live in RAM only. A crash, a redeploy or a
+ * restart wipes everything, by design. There is no database, no volume,
+ * no upload directory, and nothing to recover.
+ */
+
+const crypto = require("crypto");
 const path = require("path");
-const fs = require("fs/promises");
-const fssync = require("fs");
+const fs = require("fs");
+
+const express = require("express");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const multer = require("multer");
-const { nanoid } = require("nanoid");
+
+/* ------------------------------------------------------------------ *
+ * Config
+ * ------------------------------------------------------------------ */
+
+const PORT = Number(process.env.PORT) || 8080;
+
+// Set this in Railway to your canonical origin, e.g. https://etherboard.net
+// If unset we fall back to the request's Host header (see publicOrigin()).
+const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN || "";
+
+const ONE_SECOND = 1000;
+const ONE_MINUTE = 60 * ONE_SECOND;
+
+const MIN_TTL_MINUTES = 1;
+const MAX_TTL_MINUTES = 60;
+
+const ROOM_EMPTY_GRACE_MS = 60 * ONE_SECOND;
+const SWEEP_INTERVAL_MS = 15 * ONE_SECOND;
+
+const MAX_CONTENT_CHARS = 500;
+const MAX_LABEL_CHARS = 40;
+
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024; // 3MB per image
+const MAX_TOTAL_IMAGE_BYTES = 150 * 1024 * 1024; // 150MB of images, board-wide
+
+const MAX_POSTS_TOTAL = 2000;
+const MAX_POSTS_PER_ROOM = 200;
+const MAX_ROOMS_TOTAL = 500;
+
+const PUBLIC_DIR = path.join(__dirname, "public");
+const ANNOUNCEMENTS_PATH = path.join(__dirname, "announcements.json");
+
+/* ------------------------------------------------------------------ *
+ * State — all of it in RAM, all of it disposable
+ * ------------------------------------------------------------------ */
+
+/** @type {Map<string, object>} */ const posts = new Map();
+/** @type {Map<string, object>} */ const rooms = new Map();
+/** @type {Map<string, {buf: Buffer, mime: string, bytes: number}>} */
+const images = new Map();
+
+let imageBytesTotal = 0;
+
+// Regenerated every boot. Used to key rate limits without ever holding
+// a raw IP address in memory. Dies with the process.
+const BOOT_SALT = crypto.randomBytes(32);
+
+/* ------------------------------------------------------------------ *
+ * Helpers
+ * ------------------------------------------------------------------ */
+
+// base64url alphabet is [A-Za-z0-9_-], which matches the room-id regex
+// the frontend uses. crypto is used instead of nanoid so there's one
+// less dependency and no CJS/ESM version trap.
+function makeId(bytes = 8) {
+  return crypto.randomBytes(bytes).toString("base64url");
+}
+
+function timingSafeEqualStr(a, b) {
+  const ab = Buffer.from(String(a), "utf8");
+  const bb = Buffer.from(String(b), "utf8");
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}
+
+function safeHttpUrl(value) {
+  if (typeof value !== "string" || !value) return null;
+  try {
+    const u = new URL(value);
+    if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+function publicOrigin(req) {
+  if (PUBLIC_ORIGIN) return PUBLIC_ORIGIN.replace(/\/+$/, "");
+  return `${req.protocol}://${req.get("host")}`;
+}
+
+/**
+ * Identify an image by its actual bytes, never by the filename or the
+ * client-supplied Content-Type. Both of those are attacker-controlled.
+ */
+function sniffImageMime(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < 12) return null;
+
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+    return "image/png";
+  }
+  // JPEG: FF D8 FF
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+    return "image/jpeg";
+  }
+  // GIF: "GIF87a" | "GIF89a"
+  const gif = buf.subarray(0, 6).toString("latin1");
+  if (gif === "GIF87a" || gif === "GIF89a") {
+    return "image/gif";
+  }
+  // WEBP: "RIFF" .... "WEBP"
+  if (buf.subarray(0, 4).toString("latin1") === "RIFF" && buf.subarray(8, 12).toString("latin1") === "WEBP") {
+    return "image/webp";
+  }
+  return null;
+}
+
+function forgetImage(imageId) {
+  const img = images.get(imageId);
+  if (!img) return;
+  imageBytesTotal -= img.bytes;
+  images.delete(imageId);
+}
+
+function destroyPost(post) {
+  if (post.imageId) forgetImage(post.imageId);
+  posts.delete(post.id);
+}
+
+function destroyRoom(room) {
+  for (const post of posts.values()) {
+    if (post.roomId === room.id) destroyPost(post);
+  }
+  rooms.delete(room.id);
+}
+
+function countPostsInRoom(roomId) {
+  let n = 0;
+  for (const p of posts.values()) if (p.roomId === roomId) n++;
+  return n;
+}
+
+/**
+ * Expire posts, close empty rooms, drop unreferenced images.
+ * Deleting from a Map while iterating it is well-defined in JS.
+ */
+function sweep() {
+  const now = Date.now();
+
+  for (const post of posts.values()) {
+    if (post.expiresAt <= now) destroyPost(post);
+  }
+
+  for (const room of rooms.values()) {
+    if (room.lastActiveAt + ROOM_EMPTY_GRACE_MS < now) destroyRoom(room);
+  }
+
+  // Belt and braces: no image should outlive its post.
+  const referenced = new Set();
+  for (const p of posts.values()) if (p.imageId) referenced.add(p.imageId);
+  for (const imageId of images.keys()) {
+    if (!referenced.has(imageId)) forgetImage(imageId);
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Static content loaded once at boot (read-only, ships with the repo)
+ * ------------------------------------------------------------------ */
+
+let ANNOUNCEMENTS = { items: [] };
+
+function loadAnnouncements() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(ANNOUNCEMENTS_PATH, "utf8"));
+    const items = Array.isArray(parsed?.items) ? parsed.items : [];
+
+    // Sanitise here, at the boundary, so bad data can never reach a browser.
+    ANNOUNCEMENTS = {
+      items: items
+        .filter((i) => i && typeof i === "object")
+        .map((i) => ({
+          id: String(i.id ?? "").slice(0, 64),
+          title: String(i.title ?? "").slice(0, 120),
+          body: String(i.body ?? "").slice(0, 600),
+          link: safeHttpUrl(i.link), // null unless it's a real http(s) URL
+          date: String(i.date ?? "").slice(0, 40),
+          pinned: Boolean(i.pinned)
+        }))
+    };
+  } catch (e) {
+    console.error("Could not load announcements.json:", e.message);
+    ANNOUNCEMENTS = { items: [] };
+  }
+}
+
+let INDEX_TEMPLATE = "";
+
+/**
+ * The page's <script> and <style> are inline. Rather than weaken CSP with
+ * 'unsafe-inline', we stamp a fresh nonce into them on every request.
+ */
+function loadIndexTemplate() {
+  const raw = fs.readFileSync(path.join(PUBLIC_DIR, "index.html"), "utf8");
+  INDEX_TEMPLATE = raw
+    .replace(/<script(?![^>]*\bsrc=)([^>]*)>/gi, '<script nonce="__CSP_NONCE__"$1>')
+    .replace(/<style([^>]*)>/gi, '<style nonce="__CSP_NONCE__"$1>');
+}
+
+function sendIndex(req, res) {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.send(INDEX_TEMPLATE.split("__CSP_NONCE__").join(res.locals.cspNonce));
+}
+
+/* ------------------------------------------------------------------ *
+ * App
+ * ------------------------------------------------------------------ */
 
 const app = express();
 
-// JSON body needed for DELETE route; uploads use multipart (multer)
-app.use(express.json({ limit: "1mb" }));
+app.disable("x-powered-by");
 
-// Serve frontend
-app.use(express.static("public"));
+// Railway terminates TLS at its edge and forwards one hop. Without this,
+// req.ip is the proxy for everyone and rate limiting would throttle the
+// whole site as a single client.
+app.set("trust proxy", 1);
 
-/**
- * Config
- */
-const MAX_TTL_MINUTES = 60;
-const MIN_TTL_MINUTES = 1;
-const ONE_MINUTE = 60 * 1000;
-const ONE_HOUR = 60 * ONE_MINUTE;
-
-// Rooms are deleted when there are no heartbeats for this long.
-// This approximates "room disappears after all users leave".
-const ROOM_EMPTY_GRACE_MS = 60 * 1000; // 60 seconds
-
-const DB_PATH = path.join(__dirname, "db.json");
-const ANNOUNCEMENTS_PATH = path.join(__dirname, "announcements.json");
-const UPLOADS_DIR = path.join(__dirname, "uploads");
-
-// Serve uploaded images
-app.use("/uploads", express.static(UPLOADS_DIR));
-
-app.get("/health", (req, res) => res.status(200).send("ok"));
-
-/**
- * Serve the same SPA page for room links:
- * https://etherboard.net/r/<roomId>
- */
-app.get("/r/:roomId", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+app.use((req, res, next) => {
+  res.locals.cspNonce = crypto.randomBytes(16).toString("base64");
+  next();
 });
 
-/**
- * Ensure uploads dir exists
- */
-async function ensureUploadsDir() {
-  await fs.mkdir(UPLOADS_DIR, { recursive: true });
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: {
+        "default-src": ["'none'"],
+        "script-src": [(req, res) => `'nonce-${res.locals.cspNonce}'`],
+        "style-src": [(req, res) => `'nonce-${res.locals.cspNonce}'`],
+        // The markup uses a few style="" attributes; nonces don't cover
+        // those. Style attributes can't execute script, so this is safe.
+        "style-src-attr": ["'unsafe-inline'"],
+        "img-src": ["'self'", "blob:"], // blob: is the local upload preview
+        "connect-src": ["'self'"],
+        "base-uri": ["'none'"],
+        "form-action": ["'none'"],
+        "frame-ancestors": ["'none'"],
+        "object-src": ["'none'"],
+        "upgrade-insecure-requests": []
+      }
+    },
+    crossOriginResourcePolicy: { policy: "same-origin" },
+    crossOriginEmbedderPolicy: false,
+    referrerPolicy: { policy: "no-referrer" },
+    hsts: { maxAge: 15552000, includeSubDomains: true }
+  })
+);
+
+// Only ever used for the room label and the delete token.
+app.use(express.json({ limit: "8kb" }));
+
+/* ------------------------------------------------------------------ *
+ * Rate limiting
+ *
+ * Keyed on an HMAC of the IP using a salt that is regenerated at boot,
+ * so no raw IP address is ever held in memory and the mapping is
+ * unrecoverable once the process dies.
+ * ------------------------------------------------------------------ */
+
+function anonKey(req) {
+  return crypto.createHmac("sha256", BOOT_SALT).update(req.ip || "unknown").digest("base64url");
 }
 
-/**
- * JSON helpers
- */
-async function readJsonFile(filePath, fallback) {
-  try {
-    const raw = await fs.readFile(filePath, "utf8");
-    return JSON.parse(raw);
-  } catch {
-    return fallback;
-  }
+function limiter(windowMs, limit, message) {
+  return rateLimit({
+    windowMs,
+    limit,
+    keyGenerator: anonKey,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    handler: (req, res) => res.status(429).json({ error: message })
+  });
 }
 
-async function writeJsonFile(filePath, data) {
-  await fs.writeFile(filePath, JSON.stringify(data, null, 2));
-}
+const postLimiter = limiter(5 * ONE_MINUTE, 12, "Slow down — too many posts. Try again in a few minutes.");
+const roomLimiter = limiter(10 * ONE_MINUTE, 5, "Too many rooms created. Try again in a few minutes.");
+const pingLimiter = limiter(ONE_MINUTE, 40, "Too many requests.");
+const readLimiter = limiter(ONE_MINUTE, 240, "Too many requests.");
 
-/**
- * DB structure:
- * {
- *   posts: [{ id, room_id|null, content, image_url, image_path, created_at, expires_at, delete_token }],
- *   rooms: [{ id, created_at, last_active_at }]
- * }
- */
-async function readDb() {
-  const data = await readJsonFile(DB_PATH, { posts: [], rooms: [] });
-  if (!data || typeof data !== "object") return { posts: [], rooms: [] };
-  if (!Array.isArray(data.posts)) data.posts = [];
-  if (!Array.isArray(data.rooms)) data.rooms = [];
-  return data;
-}
-
-async function writeDb(data) {
-  await writeJsonFile(DB_PATH, data);
-}
-
-/**
- * File deletion helpers
- */
-async function safeUnlink(filePath) {
-  try {
-    await fs.unlink(filePath);
-  } catch {
-    // ignore missing / already deleted
-  }
-}
-
-function filePathFromImageUrl(image_url) {
-  if (!image_url) return null;
-  if (!image_url.startsWith("/uploads/")) return null;
-  const filename = image_url.replace("/uploads/", "");
-  return path.join(UPLOADS_DIR, filename);
-}
-
-async function deletePostImage(post) {
-  const p = post.image_path || filePathFromImageUrl(post.image_url);
-  if (p) await safeUnlink(p);
-}
-
-/**
- * Cleanup expired posts and delete their images
- */
-async function cleanupExpiredPosts(data) {
-  const now = Date.now();
-  const posts = data.posts || [];
-
-  const expired = posts.filter((p) => p.expires_at <= now);
-  data.posts = posts.filter((p) => p.expires_at > now);
-
-  for (const p of expired) {
-    await deletePostImage(p);
-  }
-}
-
-/**
- * Orphan sweep:
- * Delete files in uploads/ older than ONE_HOUR that are not referenced by any active post.
- */
-async function sweepOrphanUploads(data) {
-  let files = [];
-  try {
-    files = await fs.readdir(UPLOADS_DIR);
-  } catch {
-    return;
-  }
-
-  const referenced = new Set(
-    (data.posts || [])
-      .map((p) => (p.image_url && p.image_url.startsWith("/uploads/") ? p.image_url.replace("/uploads/", "") : null))
-      .filter(Boolean)
-  );
-
-  const now = Date.now();
-
-  for (const filename of files) {
-    if (!filename || filename.startsWith(".")) continue;
-
-    const fullPath = path.join(UPLOADS_DIR, filename);
-
-    let stat;
-    try {
-      stat = await fs.stat(fullPath);
-    } catch {
-      continue;
-    }
-
-    const ageMs = now - stat.mtimeMs;
-
-    if (!referenced.has(filename) && ageMs > ONE_HOUR) {
-      await safeUnlink(fullPath);
-    }
-  }
-}
-
-/**
- * Rooms:
- * - Keep rooms in DB
- * - Each active client pings /rooms/:id/ping every ~20s
- * - If no ping for ROOM_EMPTY_GRACE_MS, delete the room and all its posts/images
- */
-function getRoomById(data, roomId) {
-  return (data.rooms || []).find((r) => r.id === roomId) || null;
-}
-
-async function deleteRoomAndItsPosts(data, roomId) {
-  // Remove posts in room + delete images
-  const inRoom = (data.posts || []).filter((p) => p.room_id === roomId);
-  for (const p of inRoom) {
-    await deletePostImage(p);
-  }
-  data.posts = (data.posts || []).filter((p) => p.room_id !== roomId);
-
-  // Remove room
-  data.rooms = (data.rooms || []).filter((r) => r.id !== roomId);
-}
-
-async function cleanupEmptyRooms(data) {
-  const now = Date.now();
-  const rooms = data.rooms || [];
-  const toDelete = rooms.filter((r) => (r.last_active_at || r.created_at) + ROOM_EMPTY_GRACE_MS < now);
-
-  for (const r of toDelete) {
-    await deleteRoomAndItsPosts(data, r.id);
-  }
-}
-
-/**
- * Maintenance
- */
-async function runMaintenance() {
-  const data = await readDb();
-  await cleanupExpiredPosts(data);
-  await cleanupEmptyRooms(data);
-  await sweepOrphanUploads(data);
-  await writeDb(data);
-}
-
-/**
- * Multer config (direct uploads)
- */
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname || "").toLowerCase() || ".bin";
-    cb(null, `${Date.now()}-${nanoid(10)}${ext}`);
-  }
-});
+/* ------------------------------------------------------------------ *
+ * Uploads — memory only
+ * ------------------------------------------------------------------ */
 
 const upload = multer({
-  storage,
-  limits: { fileSize: 3 * 1024 * 1024 }, // 3MB
-  fileFilter: (req, file, cb) => {
-    const ok = /^image\/(png|jpe?g|webp|gif)$/i.test(file.mimetype || "");
-    if (!ok) return cb(new Error("Only images allowed (png, jpg, jpeg, webp, gif)."));
-    cb(null, true);
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_IMAGE_BYTES,
+    files: 1,
+    fields: 6,
+    fieldSize: 8 * 1024,
+    parts: 10
   }
+  // No fileFilter: mimetype is a client-supplied header and proves nothing.
+  // The real check is sniffImageMime() against the actual bytes, below.
+});
+
+/* ------------------------------------------------------------------ *
+ * Routes
+ * ------------------------------------------------------------------ */
+
+app.get("/health", (req, res) => res.status(200).type("text/plain").send("ok"));
+
+app.get("/", sendIndex);
+
+// Serve the SPA for room links: /r/<roomId>
+app.get("/r/:roomId", (req, res) => {
+  if (!/^[A-Za-z0-9_-]{1,32}$/.test(req.params.roomId)) {
+    return res.status(404).type("text/plain").send("Not found");
+  }
+  sendIndex(req, res);
+});
+
+// The raw file has no nonce, so serving it directly would break under CSP.
+app.get("/index.html", (req, res) => res.redirect(301, "/"));
+
+// Everything else in public/ (favicon, etc). index:false keeps the raw
+// index.html from being served without its nonce.
+app.use(
+  express.static(PUBLIC_DIR, {
+    index: false,
+    dotfiles: "ignore",
+    setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff")
+  })
+);
+
+/**
+ * Images.
+ *
+ * We set the Content-Type ourselves from the sniffed bytes, add nosniff,
+ * and sandbox the response. Even a valid-image-with-HTML-appended polyglot
+ * is inert here: the browser is told it's an image, told not to guess, and
+ * told it may not execute anything.
+ */
+app.get("/i/:imageId", readLimiter, (req, res) => {
+  const img = images.get(req.params.imageId);
+  if (!img) return res.status(404).type("text/plain").send("Not found");
+
+  res.setHeader("Content-Type", img.mime);
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+  res.setHeader("Content-Disposition", "inline");
+  res.setHeader("Cache-Control", "no-store");
+  res.end(img.buf);
+});
+
+app.get("/announcements", readLimiter, (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json(ANNOUNCEMENTS);
 });
 
 /**
- * Announcements
+ * Create a room.
+ * Body: { label?: string } -> { roomId, joinUrl }
  */
-app.get("/announcements", async (req, res) => {
-  const data = await readJsonFile(ANNOUNCEMENTS_PATH, { items: [] });
-  if (!data || !Array.isArray(data.items)) return res.json({ items: [] });
-  res.json(data);
-});
+app.post("/rooms", roomLimiter, (req, res) => {
+  const label = typeof req.body?.label === "string" ? req.body.label.trim().slice(0, MAX_LABEL_CHARS) : "";
 
-/**
- * Create room
- * Body: { label?: string }
- * Returns: { roomId, joinUrl }
- */
-app.post("/rooms", async (req, res) => {
-  const label = String(req.body?.label || "").trim().slice(0, 40);
+  if (rooms.size >= MAX_ROOMS_TOTAL) {
+    return res.status(503).json({ error: "Too many rooms are open right now. Try again shortly." });
+  }
 
-  const data = await readDb();
-  await cleanupExpiredPosts(data);
-  await cleanupEmptyRooms(data);
-
-  const roomId = nanoid(10);
+  const id = makeId(8);
   const now = Date.now();
 
-  data.rooms.unshift({
-    id: roomId,
-    label: label || null,
-    created_at: now,
-    last_active_at: now
-  });
+  rooms.set(id, { id, label: label || null, createdAt: now, lastActiveAt: now });
 
-  await writeDb(data);
-
-  const joinUrl = `${req.protocol}://${req.get("host")}/r/${roomId}`;
-  res.json({ roomId, joinUrl });
+  res.json({ roomId: id, joinUrl: `${publicOrigin(req)}/r/${id}` });
 });
 
 /**
- * Room heartbeat
- * POST /rooms/:id/ping
+ * Room heartbeat. Keeps a room alive while at least one tab is open.
  */
-app.post("/rooms/:id/ping", async (req, res) => {
-  const roomId = req.params.id;
+app.post("/rooms/:id/ping", pingLimiter, (req, res) => {
+  const room = rooms.get(req.params.id);
+  if (!room) return res.status(404).json({ error: "Room not found." });
 
-  const data = await readDb();
-  const room = getRoomById(data, roomId);
-  if (!room) return res.status(404).json({ error: "Room not found" });
-
-  room.last_active_at = Date.now();
-  await writeDb(data);
-
+  room.lastActiveAt = Date.now();
   res.json({ ok: true });
 });
 
 /**
- * Posts (main feed or rooms)
+ * Read the feed.
+ * GET /posts            -> main feed
+ * GET /posts?roomId=xyz -> room feed
  *
- * GET /posts?roomId=<optional>
- * - roomId omitted => main feed
- * - roomId provided => room feed
+ * Pure read. Nothing is written, nothing is swept — that's the sweeper's
+ * job on its own interval. Filter expired posts on the way out so a post
+ * is never shown past its timer even between sweeps.
  */
-app.get("/posts", async (req, res) => {
-  const roomId = req.query.roomId ? String(req.query.roomId) : null;
+app.get("/posts", readLimiter, (req, res) => {
+  const roomId = typeof req.query.roomId === "string" && req.query.roomId ? req.query.roomId : null;
 
-  const data = await readDb();
-  await cleanupExpiredPosts(data);
-  await cleanupEmptyRooms(data);
-  await writeDb(data);
-
-  // If roomId is specified, validate room exists
-  if (roomId) {
-    const room = getRoomById(data, roomId);
-    if (!room) return res.status(404).json({ error: "Room not found" });
+  if (roomId && !rooms.has(roomId)) {
+    return res.status(404).json({ error: "Room not found." });
   }
 
-  const filtered = (data.posts || []).filter((p) => (roomId ? p.room_id === roomId : !p.room_id));
+  const now = Date.now();
+  const out = [];
 
-  res.json(
-    filtered.map(({ id, content, image_url, created_at, expires_at }) => ({
-      id, content, image_url, created_at, expires_at
-    }))
-  );
-});
-
-/**
- * Create post/message
- * multipart/form-data:
- * - content (optional, max 500)
- * - ttlMinutes (optional; 1..60; default 60)
- * - roomId (optional; if present, posts into that room)
- * - image (optional file)
- */
-app.post("/posts", upload.single("image"), async (req, res) => {
-  try {
-    const content = (req.body.content || "").trim();
-    const roomIdRaw = req.body.roomId ? String(req.body.roomId).trim() : "";
-    const roomId = roomIdRaw ? roomIdRaw : null;
-
-    const ttlRaw = req.body.ttlMinutes ? String(req.body.ttlMinutes).trim() : "";
-    const ttlMinutes = ttlRaw ? Number(ttlRaw) : MAX_TTL_MINUTES;
-
-    const file = req.file || null;
-
-    // Basic validation
-    if (!content && !file) {
-      return res.status(400).json({ error: "Post must include text and/or an image." });
-    }
-    if (content.length > 500) {
-      if (file?.path) await safeUnlink(file.path);
-      return res.status(400).json({ error: "Text is too long (max 500 chars)." });
-    }
-
-    if (!Number.isFinite(ttlMinutes) || ttlMinutes < MIN_TTL_MINUTES || ttlMinutes > MAX_TTL_MINUTES) {
-      if (file?.path) await safeUnlink(file.path);
-      return res.status(400).json({ error: "ttlMinutes must be between 1 and 60." });
-    }
-
-    const data = await readDb();
-    await cleanupExpiredPosts(data);
-    await cleanupEmptyRooms(data);
-
-    // If posting into a room, ensure it exists and mark active
-    if (roomId) {
-      const room = getRoomById(data, roomId);
-      if (!room) {
-        if (file?.path) await safeUnlink(file.path);
-        return res.status(404).json({ error: "Room not found" });
-      }
-      room.last_active_at = Date.now();
-    }
-
-    const now = Date.now();
-
-    let image_url = null;
-    let image_path = null;
-    if (file) {
-      image_url = `/uploads/${file.filename}`;
-      image_path = file.path;
-    }
-
-    const post = {
-      id: nanoid(8),
-      room_id: roomId, // null for main feed
-      content,
-      image_url,
-      image_path,
-      delete_token: nanoid(16),
-      created_at: now,
-      expires_at: now + ttlMinutes * ONE_MINUTE
-    };
-
-    data.posts.unshift(post);
-    await writeDb(data);
-
-    return res.json({
-      id: post.id,
-      deleteToken: post.delete_token,
-      expiresAt: post.expires_at
+  for (const p of posts.values()) {
+    if (roomId ? p.roomId !== roomId : p.roomId !== null) continue;
+    if (p.expiresAt <= now) continue;
+    out.push({
+      id: p.id,
+      content: p.content,
+      image_url: p.imageUrl,
+      created_at: p.createdAt,
+      expires_at: p.expiresAt
     });
-  } catch (e) {
-    const msg = e?.message || "Upload failed.";
-    return res.status(400).json({ error: msg });
   }
+
+  out.sort((a, b) => b.created_at - a.created_at);
+
+  res.setHeader("Cache-Control", "no-store");
+  res.json(out);
 });
 
 /**
- * Delete post (optional feature)
+ * Create a post.
+ * multipart/form-data: content?, ttlMinutes?, roomId?, image?
+ *
+ * Note there is no `await` between reading state and mutating it, so Node's
+ * single thread makes this handler atomic. That is the whole reason the
+ * old read-modify-write race is gone.
  */
-app.delete("/posts/:id", async (req, res) => {
-  const { id } = req.params;
-  const { token } = req.body || {};
+app.post("/posts", postLimiter, upload.single("image"), (req, res) => {
+  const content = typeof req.body?.content === "string" ? req.body.content.trim() : "";
+  const roomIdRaw = typeof req.body?.roomId === "string" ? req.body.roomId.trim() : "";
+  const roomId = roomIdRaw || null;
+  const ttlRaw = typeof req.body?.ttlMinutes === "string" ? req.body.ttlMinutes.trim() : "";
+  const ttlMinutes = ttlRaw ? Number(ttlRaw) : MAX_TTL_MINUTES;
+  const file = req.file || null;
 
-  const data = await readDb();
-  await cleanupExpiredPosts(data);
-  await cleanupEmptyRooms(data);
-
-  const index = (data.posts || []).findIndex((p) => p.id === id);
-  if (index === -1) return res.status(404).json({ error: "Not found" });
-
-  const post = data.posts[index];
-  if (post.delete_token !== token) return res.status(403).json({ error: "Invalid token" });
-
-  await deletePostImage(post);
-
-  data.posts.splice(index, 1);
-  await writeDb(data);
-
-  return res.json({ success: true });
-});
-
-/**
- * Maintenance schedule:
- * - run once at startup
- * - run every minute
- */
-(async () => {
-  await ensureUploadsDir();
-
-  if (!fssync.existsSync(UPLOADS_DIR)) {
-    console.warn("Uploads directory missing:", UPLOADS_DIR);
+  if (!content && !file) {
+    return res.status(400).json({ error: "Post must include text and/or an image." });
+  }
+  if (content.length > MAX_CONTENT_CHARS) {
+    return res.status(400).json({ error: `Text is too long (max ${MAX_CONTENT_CHARS} characters).` });
+  }
+  if (!Number.isInteger(ttlMinutes) || ttlMinutes < MIN_TTL_MINUTES || ttlMinutes > MAX_TTL_MINUTES) {
+    return res.status(400).json({ error: `Timer must be between ${MIN_TTL_MINUTES} and ${MAX_TTL_MINUTES} minutes.` });
   }
 
-  try {
-    await runMaintenance();
-  } catch (e) {
-    console.error("Startup maintenance error:", e);
-  }
-
-  setInterval(async () => {
-    try {
-      await runMaintenance();
-    } catch (e) {
-      console.error("Maintenance error:", e);
+  let room = null;
+  if (roomId) {
+    room = rooms.get(roomId);
+    if (!room) return res.status(404).json({ error: "Room not found." });
+    if (countPostsInRoom(roomId) >= MAX_POSTS_PER_ROOM) {
+      return res.status(503).json({ error: "This room is full. Wait for older posts to expire." });
     }
-  }, 60 * 1000);
+  }
 
-  const PORT = Number(process.env.PORT) || 8080;
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Running on port ${PORT}`);
-  });
-})();
+  if (posts.size >= MAX_POSTS_TOTAL) {
+    return res.status(503).json({ error: "The board is at capacity. Try again shortly." });
+  }
+
+  let imageId = null;
+  if (file) {
+    const mime = sniffImageMime(file.buffer);
+    if (!mime) {
+      return res.status(400).json({ error: "That file isn't a supported image (PNG, JPEG, GIF or WebP)." });
+    }
+    if (imageBytesTotal + file.buffer.length > MAX_TOTAL_IMAGE_BYTES) {
+      return res.status(503).json({ error: "Image storage is full right now. Try again shortly." });
+    }
+    imageId = makeId(12);
+    images.set(imageId, { buf: file.buffer, mime, bytes: file.buffer.length });
+    imageBytesTotal += file.buffer.length;
+  }
+
+  const now = Date.now();
+  const post = {
+    id: makeId(8),
+    roomId,
+    content,
+    imageId,
+    imageUrl: imageId ? `/i/${imageId}` : null,
+    deleteToken: makeId(24),
+    createdAt: now,
+    expiresAt: now + ttlMinutes * ONE_MINUTE
+  };
+
+  posts.set(post.id, post);
+  if (room) room.lastActiveAt = now;
+
+  res.json({ id: post.id, deleteToken: post.deleteToken, expiresAt: post.expiresAt });
+});
+
+/**
+ * Delete your own post, using the token handed back at creation time.
+ */
+app.delete("/posts/:id", postLimiter, (req, res) => {
+  const post = posts.get(req.params.id);
+  const token = typeof req.body?.token === "string" ? req.body.token : "";
+
+  if (!post) return res.status(404).json({ error: "Not found." });
+  if (!timingSafeEqualStr(post.deleteToken, token)) {
+    return res.status(403).json({ error: "Invalid token." });
+  }
+
+  destroyPost(post);
+  res.json({ success: true });
+});
+
+/* ------------------------------------------------------------------ *
+ * Fallbacks
+ * ------------------------------------------------------------------ */
+
+app.use((req, res) => res.status(404).json({ error: "Not found." }));
+
+// Anything that reaches here gets a generic message. Internal error text
+// stays in the logs, not in the response body.
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ error: "Image is too large (max 3MB)." });
+    }
+    return res.status(400).json({ error: "Upload rejected." });
+  }
+  console.error("Unhandled error:", err?.message);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ error: "Something went wrong." });
+});
+
+/* ------------------------------------------------------------------ *
+ * Boot
+ * ------------------------------------------------------------------ */
+
+loadAnnouncements();
+loadIndexTemplate();
+
+setInterval(sweep, SWEEP_INTERVAL_MS).unref();
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Etherboard listening on ${PORT}`);
+  console.log(`Announcements loaded: ${ANNOUNCEMENTS.items.length}`);
+});

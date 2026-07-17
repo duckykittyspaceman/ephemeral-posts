@@ -1,17 +1,19 @@
 {
-  "name": "ephemeral-posts",
-  "version": "1.0.0",
+  "name": "etherboard",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Ephemeral anonymous board. Nothing user-generated touches the disk.",
   "main": "server.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node server.js"
   },
   "engines": {
-    "node": "20.x"
+    "node": ">=20"
   },
   "dependencies": {
-    "express": "^5.2.1",
-    "multer": "^1.4.5-lts.1",
-    "nanoid": "^5.1.6"
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.4.1",
+    "helmet": "^8.0.0",
+    "multer": "^2.0.0"
   }
 }

@@ -7,16 +7,15 @@
       "pinned": true,
       "date": "2025-12-24"
     },
-
     {
       "id": "Subreddit",
       "title": "Join our subreddit",
+      "body": "Come hang out with us at r/EtherBoard.",
+      "link": "https://www.reddit.com/r/EtherBoard",
       "pinned": true,
-      "date": "2025-12-29",
-      "body": "www.reddit.com/r/EtherBoard"
+      "date": "2025-12-29"
     },
-
-   {
+    {
       "id": "feature-rooms-ttl",
       "title": "New: Custom timers + Rooms",
       "body": "You can now choose how long your post stays up (up to 60 minutes). Plus, you can create private Rooms and share a link so anyone can join—no accounts needed. Rooms disappear shortly after everyone leaves.",
@@ -25,4 +24,3 @@
     }
   ]
 }
-
