@@ -409,6 +409,463 @@
       refreshBtn.disabled = true;
       statusEl.textContent = "";
 
+      let posted = false;
+
+      try {
+        const form = new FormData();
+        form.append("content", text);
+        form.append("ttlMinutes", String(ttlMinutes));
+        if (selectedFile) form.append("image", selectedFile);
+
+        statusEl.textContent = selectedFile ? "Uploading…" : "Posting…";
+
+        const res = await fetch("/posts", { method: "POST", body: form });
+
+        if (!res.ok) {
+          let msg = "Could not post. Please try again.";
+          try {
+            const data = await res.json();
+            if (data && typeof data.error === "string") msg = data.error;
+          } catch {}
+          alert(msg);
+          statusEl.textContent = "";
+          return;
+        }
+
+        posted = true;
+      } catch (e) {
+        // Only genuine fetch failures reach here now.
+        alert(`Network error: ${e.message}`);
+        statusEl.textContent = "";
+      } finally {
+        postBtn.disabled = false;
+        refreshBtn.disabled = false;
+      }
+
+      // Deliberately outside the try: a rendering bug in loadPosts() must
+      // never be reported to the user as a network failure. The post has
+      // already been accepted by the server at this point.
+      if (posted) {
+        content.value = "";
+        count.textContent = "0 / 500";
+        clearImageBtn.click();
+        statusEl.textContent = "";
+        await loadPosts();
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, m =>
+        ({ "&":"&amp;","<":"&lt;",">":"&gt;", "\"":"&quot;","'":"&#039;" }[m])
+      );
+    }
+
+    // Attribute values need the same treatment as text. The old version
+    // only escaped double quotes, which left the door open.
+    function escapeAttr(str) {
+      return escapeHtml(str);
+    }
+
+    // Only ever emit http(s) URLs into an href. Blocks javascript:, data:,
+    // vbscript: and friends. The server validates this too — this is the
+    // second lock on the same door.
+    function safeUrl(value) {
+      try {
+        const u = new URL(String(value), window.location.origin);
+        return (u.protocol === "https:" || u.protocol === "http:") ? u.href : null;
+      } catch {
+        return null;
+      }
+    }
+
+    // Buttons
+    document.getElementById("postBtn").addEventListener("click", submit);
+    refreshBtn.addEventListener("click", async () => {
+      await loadAnnouncements();
+      await loadPosts();
+    });
+    // Init
+    loadAnnouncements();
+    loadPosts();
+    setInterval(loadPosts, 5000);
+  </script>
+</body>
+</html>
+    .wrap { max-width: var(--max); margin: 0 auto; padding: 40px 18px 80px; }
+
+    header { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+
+    .logo {
+      width: 48px; height: 48px; border-radius: 14px;
+      background: linear-gradient(135deg, rgba(139,233,253,0.95), rgba(167,139,250,0.95));
+      box-shadow: var(--shadow);
+      display: grid; place-items: center;
+      flex: 0 0 auto;
+    }
+
+    .logo svg { width: 28px; height: 28px; }
+
+    h1 { font-size: 20px; margin: 0; letter-spacing: 0.3px; }
+    .tagline { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 12px 0 26px;
+    }
+
+    .hero {
+      font-size: 15px;
+      color: var(--muted);
+      line-height: 1.5;
+      max-width: 760px;
+    }
+
+    .pill {
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.06);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.78);
+      font-family: var(--mono);
+    }
+
+    .grid { display: grid; gap: 20px; }
+    @media (min-width: 900px) {
+      .grid { grid-template-columns: 1.05fr 0.95fr; }
+    }
+
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.05));
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .card-header h2 { margin: 0; font-size: 16px; font-weight: 650; }
+
+    .card-body { padding: 16px 18px 18px; }
+
+    textarea {
+      width: 100%;
+      min-height: 120px;
+      resize: vertical;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: rgba(0,0,0,0.25);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.45;
+      outline: none;
+    }
+
+    textarea:focus {
+      border-color: rgba(139,233,253,0.6);
+      box-shadow: 0 0 0 3px rgba(139,233,253,0.18);
+    }
+
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+    .meta { font-size: 12px; color: var(--muted); }
+
+    select, input[type="text"], button {
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      font-weight: 600;
+      padding: 10px 12px;
+      font-size: 13px;
+    }
+
+    input[type="text"] {
+      font-weight: 500;
+      min-width: 240px;
+    }
+
+    button { cursor: pointer; }
+    button.primary {
+      background: linear-gradient(135deg, rgba(139,233,253,0.28), rgba(167,139,250,0.22));
+      border-color: rgba(139,233,253,0.6);
+    }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    input[type="file"] { max-width: 100%; color: var(--muted); }
+
+    .preview { margin-top: 10px; display: none; gap: 10px; align-items: center; }
+    .thumb {
+      width: 74px; height: 74px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      object-fit: cover;
+      background: rgba(0,0,0,0.25);
+    }
+
+    .feed { display: flex; flex-direction: column; gap: 12px; }
+    .post {
+      border: 1px solid var(--border);
+      background: rgba(0,0,0,0.18);
+      border-radius: 14px;
+      padding: 12px 14px;
+    }
+    .post-text { white-space: pre-wrap; font-size: 14px; line-height: 1.45; }
+    .post-img {
+      width: 100%;
+      margin-top: 10px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      display: block;
+    }
+    .post-footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--muted);
+      font-family: var(--mono);
+      flex-wrap: wrap;
+    }
+
+    .updates {
+      border-color: rgba(139,233,253,0.30);
+      background: linear-gradient(180deg, rgba(139,233,253,0.10), rgba(0,0,0,0.16));
+      margin-bottom: 12px;
+    }
+    .updates h3 { margin: 0 0 10px 0; font-size: 13px; color: rgba(255,255,255,0.85); }
+    .update-item { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.10); }
+    .update-title { font-weight: 650; margin: 0; font-size: 13px; color: rgba(255,255,255,0.88); }
+    .update-body { margin-top: 6px; font-size: 13px; line-height: 1.4; color: rgba(255,255,255,0.74); }
+    .update-date { margin-top: 6px; font-family: var(--mono); font-size: 12px; color: rgba(255,255,255,0.60); }
+    .update-body a { color: rgba(139,233,253,0.9); text-decoration: none; border-bottom: 1px solid rgba(139,233,253,0.35); }
+    .update-body a:hover { border-bottom-color: rgba(139,233,253,0.7); }
+
+    footer { margin-top: 60px; font-size: 12px; color: var(--muted); text-align: center; line-height: 1.4; }
+    .danger { color: rgba(251, 113, 133, 0.95); }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M12 2C8.5 5.2 7 7.6 7 10.2c0 2.7 2.2 4.8 5 4.8s5-2.1 5-4.8C17 7.6 15.5 5.2 12 2Z" fill="rgba(0,0,0,0.35)"/>
+          <path d="M8.5 13.5c.7 2.6 2.5 4.5 3.5 6.5 1-2 2.8-3.9 3.5-6.5" stroke="rgba(0,0,0,0.35)" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Etherboard</h1>
+        <div class="tagline">Post it. Let go.</div>
+      </div>
+    </header>
+
+    <div class="topbar">
+      <div class="hero" id="heroText">
+        Write freely. No accounts. No history. No judgment.
+        Everything fades away—no longer than one hour.
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- Composer -->
+      <div class="card">
+        <div class="card-header">
+          <h2 id="composerTitle">Post a thought</h2>
+          <div class="meta" id="status"></div>
+        </div>
+
+        <div class="card-body">
+          <textarea id="content" maxlength="500" placeholder="Say what you need to say…"></textarea>
+
+          <div class="row">
+            <label class="meta" for="ttl">Expires in</label>
+            <select id="ttl">
+              <option value="60" selected>60 minutes (max)</option>
+              <option value="45">45 minutes</option>
+              <option value="30">30 minutes</option>
+              <option value="20">20 minutes</option>
+              <option value="15">15 minutes</option>
+              <option value="10">10 minutes</option>
+              <option value="5">5 minutes</option>
+              <option value="1">1 minute</option>
+            </select>
+
+            <span class="meta">• Images optional (≤ 3MB)</span>
+          </div>
+
+          <div class="row">
+            <input id="image" type="file" accept="image/*" />
+            <button id="clearImageBtn" type="button">Remove image</button>
+          </div>
+
+          <div class="preview" id="previewWrap">
+            <img class="thumb" id="previewImg" alt="Selected image preview" />
+            <div class="meta" id="previewMeta"></div>
+          </div>
+
+          <div class="row" style="justify-content: space-between;">
+            <div class="meta" id="count">0 / 500</div>
+            <button class="primary" id="postBtn" type="button">Post</button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Updates + Feed -->
+      <div class="card">
+        <div class="card-header">
+          <h2 id="feedTitle">Live feed</h2>
+          <button id="refreshBtn" type="button">Refresh</button>
+        </div>
+        <div class="card-body">
+          <div id="announcements"></div>
+          <div id="posts" class="feed"></div>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      Etherboard stores nothing permanently. Posts/messages disappear based on the timer you choose (up to 60 minutes).
+    </footer>
+  </div>
+
+  <script>
+    const MAX_IMAGE_MB = 3;
+
+    const content = document.getElementById("content");
+    const count = document.getElementById("count");
+    const postsEl = document.getElementById("posts");
+
+    const imageEl = document.getElementById("image");
+    const clearImageBtn = document.getElementById("clearImageBtn");
+    const statusEl = document.getElementById("status");
+    const ttlEl = document.getElementById("ttl");
+
+    const previewWrap = document.getElementById("previewWrap");
+    const previewImg = document.getElementById("previewImg");
+    const previewMeta = document.getElementById("previewMeta");
+
+    const announcementsEl = document.getElementById("announcements");
+
+    const postBtn = document.getElementById("postBtn");
+    const refreshBtn = document.getElementById("refreshBtn");
+
+    let selectedFile = null;
+
+    // Live character count
+    content.addEventListener("input", () => {
+      count.textContent = `${content.value.length} / 500`;
+    });
+
+    // Image selection + preview
+    imageEl.addEventListener("change", () => {
+      const file = imageEl.files && imageEl.files[0] ? imageEl.files[0] : null;
+      selectedFile = null;
+      statusEl.textContent = "";
+
+      if (!file) {
+        previewWrap.style.display = "none";
+        return;
+      }
+
+      const mb = file.size / (1024 * 1024);
+      if (mb > MAX_IMAGE_MB) {
+        imageEl.value = "";
+        previewWrap.style.display = "none";
+        alert(`Max image size is ${MAX_IMAGE_MB}MB.`);
+        return;
+      }
+
+      selectedFile = file;
+      previewImg.src = URL.createObjectURL(file);
+      previewMeta.textContent = `${file.type || "image"} • ${mb.toFixed(2)} MB`;
+      previewWrap.style.display = "flex";
+    });
+
+    clearImageBtn.addEventListener("click", () => {
+      imageEl.value = "";
+      selectedFile = null;
+      statusEl.textContent = "";
+      previewWrap.style.display = "none";
+      previewImg.src = "";
+      previewMeta.textContent = "";
+    });
+
+    async function loadAnnouncements() {
+      try {
+        const res = await fetch("/announcements", { cache: "no-store" });
+        const data = await res.json();
+        const pinned = (data.items || []).filter(x => x && x.pinned);
+
+        if (!pinned.length) {
+          announcementsEl.innerHTML = "";
+          return;
+        }
+
+        announcementsEl.innerHTML = `
+          <div class="post updates">
+            <h3>Updates</h3>
+            ${pinned.map(a => {
+              const href = safeUrl(a.link);
+              return `
+              <div class="update-item">
+                <div class="update-title">${escapeHtml(a.title || "")}</div>
+                <div class="update-body">
+                  ${escapeHtml(a.body || "")}
+                  ${href ? ` <a href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer">Open</a>` : ``}
+                </div>
+                <div class="update-date">${escapeHtml(a.date || "")}</div>
+              </div>
+            `;}).join("")}
+          </div>
+        `;
+      } catch {
+        announcementsEl.innerHTML = "";
+      }
+    }
+
+    async function loadPosts() {
+      const res = await fetch("/posts", { cache: "no-store" });
+      const posts = await res.json();
+
+      postsEl.innerHTML = (posts || []).map(p => `
+        <div class="post">
+          ${p.content ? `<div class="post-text">${escapeHtml(p.content)}</div>` : ``}
+          ${p.image_url ? `<img class="post-img" src="${escapeAttr(p.image_url)}" alt="User uploaded image" loading="lazy" />` : ``}
+          <div class="post-footer">
+            <span>${new Date(p.created_at).toLocaleTimeString()}</span>
+            <span>${Math.max(0, Math.floor((p.expires_at - Date.now()) / 60000))}m left</span>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    async function submit() {
+      const text = content.value.trim();
+      const ttlMinutes = Number(ttlEl.value || "60");
+
+      if (!text && !selectedFile) return;
+
+      postBtn.disabled = true;
+      refreshBtn.disabled = true;
+      statusEl.textContent = "";
+
       try {
         const form = new FormData();
         form.append("content", text);
